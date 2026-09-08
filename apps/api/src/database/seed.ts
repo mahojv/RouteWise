@@ -1,0 +1,229 @@
+import { getDbPool } from './index';
+
+export async function runSeed() {
+  const pool = getDbPool();
+  const client = await pool.connect();
+
+  console.log('🌱 Seeding sample Mexican toll plazas, data sources, rates, and vehicle presets...');
+
+  try {
+    await client.query(`
+      INSERT INTO vehicles (name, fuel_type, fuel_consumption, fuel_price, vehicle_type)
+      VALUES
+        ('Mazda 3 Sedán (Gasolina)', 'gasolina_regular', 14.5, 24.50, 'automovil'),
+        ('Honda CR-V SUV (Gasolina)', 'gasolina_regular', 11.5, 24.50, 'automovil'),
+        ('Nissan Versa (Gasolina)', 'gasolina_regular', 15.2, 24.50, 'automovil'),
+        ('Motocicleta 250cc', 'gasolina_regular', 30.0, 24.50, 'motocicleta')
+      ON CONFLICT DO NOTHING;
+    `);
+
+    // Insert CAPUFE data source
+    const sourceRes = await client.query(`
+      INSERT INTO data_sources (name, code, url, description, last_synced_at)
+      VALUES (
+        'Caminos y Puentes Federales (CAPUFE)',
+        'CAPUFE_OFICIAL',
+        'https://www.gob.mx/capufe',
+        'Tarifas oficiales de peaje en la red de autopistas de CAPUFE',
+        NOW()
+      )
+      ON CONFLICT (code) DO UPDATE SET last_synced_at = NOW()
+      RETURNING id;
+    `);
+
+    const sourceId = sourceRes.rows[0]?.id;
+
+    const samplePlazas = [
+      {
+        name: 'Caseta Palmillas (Autopista México - Querétaro 57D)',
+        operator: 'CAPUFE',
+        highway: 'MEX-057D',
+        lat: 20.3069,
+        lon: -99.9349,
+        km_marker: 148.0,
+        direction: 'both',
+        rates: [
+          { vehicle_type: 'motocicleta', cash_price: 54.0, electronic_price: 54.0 },
+          { vehicle_type: 'automovil', cash_price: 108.0, electronic_price: 108.0 },
+          { vehicle_type: 'autobus', cash_price: 215.0, electronic_price: 215.0 },
+          { vehicle_type: 'camion_2_ejes', cash_price: 215.0, electronic_price: 215.0 },
+        ],
+        bypasses: [
+          {
+            direction: 'both',
+            exit_lat: 20.3850,
+            exit_lng: -99.9920,
+            reentry_lat: 20.2520,
+            reentry_lng: -99.8850,
+            exit_name: 'Desvío San Juan del Río / Huichapan (Carretera Libre 45/57)',
+            reentry_name: 'Reincorporación Autopista 57D Polotitlán / El Ruano',
+            confidence: 1.0,
+            is_verified: true,
+            notes: 'Bypass verificado de Caseta Palmillas por San Juan del Río / Huichapan',
+          },
+        ],
+      },
+      {
+        name: 'Caseta Tepotzotlán (Autopista México - Querétaro 57D)',
+        operator: 'CAPUFE',
+        highway: 'MEX-057D',
+        lat: 19.7144,
+        lon: -99.2075,
+        km_marker: 43.0,
+        direction: 'both',
+        rates: [
+          { vehicle_type: 'motocicleta', cash_price: 54.0, electronic_price: 54.0 },
+          { vehicle_type: 'automovil', cash_price: 108.0, electronic_price: 108.0 },
+          { vehicle_type: 'autobus', cash_price: 215.0, electronic_price: 215.0 },
+          { vehicle_type: 'camion_2_ejes', cash_price: 215.0, electronic_price: 215.0 },
+        ],
+        bypasses: [
+          {
+            direction: 'both',
+            exit_lat: 19.8250,
+            exit_lng: -99.2780,
+            reentry_lat: 19.6450,
+            reentry_lng: -99.1850,
+            exit_name: 'Salida Jorobas / Libre Huehuetoca - Cuautitlán',
+            reentry_name: 'Reincorporación Vía Gustavo Baz / Periférico Norte',
+            confidence: 1.0,
+            is_verified: true,
+            notes: 'Bypass verificado de Caseta Tepotzotlán por Jorobas y Vía Gustavo Baz',
+          },
+        ],
+      },
+      {
+        name: 'Caseta Chichimequillas (Libramiento Norponiente Querétaro)',
+        operator: 'CONCESIONARIO',
+        highway: 'MEX-057D-LIB',
+        lat: 20.7381,
+        lon: -100.3275,
+        km_marker: 18.0,
+        direction: 'both',
+        rates: [
+          { vehicle_type: 'motocicleta', cash_price: 32.0, electronic_price: 32.0 },
+          { vehicle_type: 'automovil', cash_price: 65.0, electronic_price: 65.0 },
+          { vehicle_type: 'autobus', cash_price: 130.0, electronic_price: 130.0 },
+        ],
+      },
+      {
+        name: 'Caseta Querétaro - Celaya (Cuota 45D)',
+        operator: 'CAPUFE',
+        highway: 'MEX-045D',
+        lat: 20.5512,
+        lon: -100.4851,
+        km_marker: 12.0,
+        direction: 'both',
+        rates: [
+          { vehicle_type: 'motocicleta', cash_price: 47.0, electronic_price: 47.0 },
+          { vehicle_type: 'automovil', cash_price: 95.0, electronic_price: 95.0 },
+          { vehicle_type: 'autobus', cash_price: 185.0, electronic_price: 185.0 },
+        ],
+      },
+      {
+        name: 'Caseta Puerto México (Querétaro - San Luis Potosí 57D)',
+        operator: 'FONADIN',
+        highway: 'MEX-057D',
+        lat: 21.3150,
+        lon: -100.5630,
+        km_marker: 88.0,
+        direction: 'both',
+        rates: [
+          { vehicle_type: 'motocicleta', cash_price: 72.0, electronic_price: 72.0 },
+          { vehicle_type: 'automovil', cash_price: 145.0, electronic_price: 145.0 },
+          { vehicle_type: 'autobus', cash_price: 290.0, electronic_price: 290.0 },
+        ],
+      },
+      {
+        name: 'Caseta San Marcos (México - Puebla 150D)',
+        operator: 'CAPUFE',
+        highway: 'MEX-150D',
+        lat: 19.3245,
+        lon: -98.8890,
+        km_marker: 33.0,
+        direction: 'both',
+        rates: [
+          { vehicle_type: 'motocicleta', cash_price: 78.0, electronic_price: 78.0 },
+          { vehicle_type: 'automovil', cash_price: 156.0, electronic_price: 156.0 },
+          { vehicle_type: 'autobus', cash_price: 310.0, electronic_price: 310.0 },
+        ],
+      },
+    ];
+
+    for (const plaza of samplePlazas) {
+      const plazaRes = await client.query(`
+        INSERT INTO toll_plazas (
+          name, operator, highway, latitude, longitude, geom, km_marker, direction, source_id
+        )
+        VALUES (
+          $1, $2, $3, $4, $5, ST_SetSRID(ST_MakePoint($5, $4), 4326), $6, $7, $8
+        )
+        RETURNING id;
+      `, [
+        plaza.name,
+        plaza.operator,
+        plaza.highway,
+        plaza.lat,
+        plaza.lon,
+        plaza.km_marker,
+        plaza.direction,
+        sourceId,
+      ]);
+
+      const plazaId = plazaRes.rows[0]?.id;
+      if (plazaId && plaza.rates) {
+        for (const rate of plaza.rates) {
+          await client.query(`
+            INSERT INTO toll_rates (
+              toll_plaza_id, vehicle_type, cash_price, electronic_price, currency, source_id, effective_from
+            )
+            VALUES ($1, $2, $3, $4, 'MXN', $5, '2024-01-01T00:00:00Z')
+          `, [
+            plazaId,
+            rate.vehicle_type,
+            rate.cash_price,
+            rate.electronic_price,
+            sourceId,
+          ]);
+        }
+      }
+
+      if (plazaId && (plaza as any).bypasses) {
+        for (const bp of (plaza as any).bypasses) {
+          await client.query(`
+            INSERT INTO toll_bypasses (
+              toll_plaza_id, direction, exit_lat, exit_lng, reentry_lat, reentry_lng,
+              exit_name, reentry_name, confidence, is_verified, notes
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+          `, [
+            plazaId,
+            bp.direction,
+            bp.exit_lat,
+            bp.exit_lng,
+            bp.reentry_lat,
+            bp.reentry_lng,
+            bp.exit_name,
+            bp.reentry_name,
+            bp.confidence,
+            bp.is_verified,
+            bp.notes,
+          ]);
+        }
+      }
+    }
+
+    console.log('✅ Seed data with toll rates and curated bypasses inserted successfully!');
+  } catch (err) {
+    console.error('❌ Seed error:', err);
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+if (require.main === module) {
+  runSeed()
+    .then(() => process.exit(0))
+    .catch(() => process.exit(1));
+}

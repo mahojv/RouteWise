@@ -1,0 +1,8 @@
+nombre,carretera,tramo,operador,latitud,longitud,direccion,km,tipo_vehiculo,tarifa_efectivo,tarifa_tag,vigencia_desde,vigencia_hasta
+Caseta Palmillas,MEX-57D,México - Querétaro,CAPUFE,20.3069,-99.9349,both,148.0,automovil,108.0,108.0,2024-01-01,2026-12-31
+Caseta Palmillas,MEX-57D,México - Querétaro,CAPUFE,20.3069,-99.9349,both,148.0,motocicleta,54.0,54.0,2024-01-01,2026-12-31
+Caseta Tepotzotlán,57D,México - Querétaro,CAPUFE,19.7144,-99.2075,both,43.0,automovil,108.0,108.0,2024-01-01,2026-12-31
+Caseta Tepotzotlán,57D,México - Querétaro,CAPUFE,19.7144,-99.2075,both,43.0,autobus,215.0,215.0,2024-01-01,2026-12-31
+Caseta Puerto México,MEX-057D,Querétaro - San Luis Potosí,FONADIN,21.3150,-100.5630,both,88.0,automovil,145.0,145.0,2024-01-01,2026-12-31
+Caseta Querétaro - Celaya,MEX-45D,Querétaro - Irapuato,CAPUFE,20.5512,-100.4851,both,12.0,automovil,95.0,95.0,2024-01-01,2026-12-31
+Caseta San Marcos,MEX-150D,México - Puebla,CAPUFE,19.3245,-98.8890,both,33.0,automovil,156.0,156.0,2024-01-01,2026-12-31

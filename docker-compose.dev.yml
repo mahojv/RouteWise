@@ -1,0 +1,30 @@
+services:
+  postgres:
+    image: postgis/postgis:16-3.4-alpine
+    container_name: routewise-postgres-dev
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-routewise}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-routewisepass}
+      POSTGRES_DB: ${POSTGRES_DB:-routewise}
+    ports:
+      - '5432:5432'
+    volumes:
+      - postgres_dev_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-routewise} -d ${POSTGRES_DB:-routewise}']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  osrm:
+    image: osrm/osrm-backend:latest
+    container_name: routewise-osrm-dev
+    command: osrm-routed --algorithm mld /data/mexico-latest.osrm
+    ports:
+      - '5000:5000'
+    volumes:
+      - ./docker/osrm/data:/data
+    restart: unless-stopped
+
+volumes:
+  postgres_dev_data:

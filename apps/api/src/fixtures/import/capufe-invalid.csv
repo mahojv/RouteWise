@@ -1,0 +1,5 @@
+nombre,carretera,tramo,operador,latitud,longitud,direccion,km,tipo_vehiculo,tarifa_efectivo,tarifa_tag,vigencia_desde,vigencia_hasta
+,MEX-57D,Sin Nombre,CAPUFE,20.3069,-99.9328,both,148.0,automovil,108.0,108.0,2024-01-01,2026-12-31
+Caseta Madrid,A-6,Espana,ABERTIS,40.4168,-3.7038,both,10.0,automovil,50.0,50.0,2024-01-01,2026-12-31
+Caseta Precio Invalido,MEX-57D,Tramo 1,CAPUFE,19.7122,-99.2319,both,43.0,automovil,-25.0,-25.0,2024-01-01,2026-12-31
+Caseta Coordenada Rota,MEX-57D,Tramo 2,CAPUFE,abc,xyz,both,43.0,automovil,100.0,100.0,2024-01-01,2026-12-31

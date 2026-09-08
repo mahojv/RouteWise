@@ -1,0 +1,37 @@
+{
+  "name": "routewise",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Smart Toll & Route Optimizer for Mexico - Mobile and API Monorepo",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspaces --if-present",
+    "dev:api": "npm run dev -w @routewise/api",
+    "dev:mobile": "npm run dev -w @routewise/mobile",
+    "build:packages": "npm run build -w @routewise/types && npm run build -w @routewise/config && npm run build -w @routewise/validation && npm run build -w @routewise/routing",
+    "build": "npm run build:packages && npm run build -w @routewise/api",
+    "test": "npm run test -w @routewise/routing && npm run test -w @routewise/api",
+    "lint": "npm run lint --workspaces --if-present",
+    "db:generate": "npm run db:generate -w @routewise/api",
+    "db:migrate": "npm run db:migrate -w @routewise/api",
+    "db:seed": "npm run db:seed -w @routewise/api",
+    "docker:dev": "docker compose -f docker-compose.dev.yml up -d",
+    "docker:dev:down": "docker compose -f docker-compose.dev.yml down",
+    "docker:prod": "docker compose -f docker-compose.yml up -d --build",
+    "docker:prod:down": "docker compose -f docker-compose.yml down"
+  },
+  "keywords": [
+    "routewise",
+    "toll-optimizer",
+    "routing",
+    "postgis",
+    "osrm",
+    "react-native",
+    "fastify"
+  ],
+  "author": "RouteWise Team",
+  "license": "UNLICENSED"
+}

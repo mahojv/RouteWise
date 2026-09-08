@@ -1,0 +1,55 @@
+services:
+  postgres:
+    image: postgis/postgis:16-3.4-alpine
+    container_name: routewise-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-routewise}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-routewise}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-routewise} -d ${POSTGRES_DB:-routewise}']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  osrm:
+    image: osrm/osrm-backend:latest
+    container_name: routewise-osrm
+    command: osrm-routed --algorithm mld /data/mexico-latest.osrm
+    volumes:
+      - ./docker/osrm/data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -q -O - "http://localhost:5000/route/v1/driving/-99.1332,19.4326;-99.1330,19.4320?overview=false" > /dev/null || exit 1']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    container_name: routewise-api
+    depends_on:
+      postgres:
+        condition: service_healthy
+      osrm:
+        condition: service_healthy
+    ports:
+      - '${PORT:-3000}:3000'
+    env_file:
+      - .env
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-routewise}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-routewise}
+      - ROUTING_PROVIDER=osrm
+      - OSRM_URL=http://osrm:5000
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
