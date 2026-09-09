@@ -70,6 +70,25 @@ export const routePreferencesSchema = z.object({
   timeValue: z.number().nonnegative().max(5000).default(120),
 });
 
+export const routeSearchSchema = z.object({
+  origin: waypointSchema,
+  destination: waypointSchema,
+  vehicle: z
+    .object({
+      type: vehicleTypeSchema.optional(),
+      fuelType: fuelTypeSchema.optional(),
+      fuelEfficiencyKmPerLiter: z.number().positive().max(100).optional(),
+      fuelPricePerLiter: z.number().positive().max(500).optional(),
+    })
+    .optional(),
+  preferences: z
+    .object({
+      strategy: routePreferenceModeSchema.optional(),
+      timeValue: z.number().nonnegative().max(5000).optional(),
+    })
+    .optional(),
+});
+
 export const calculateRouteSchema = z.object({
   origin: waypointSchema,
   destination: waypointSchema,

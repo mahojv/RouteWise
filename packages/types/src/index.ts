@@ -263,6 +263,71 @@ export interface RouteOption {
 }
 
 /**
+ * GeoJSON LineString representation for public route geometry
+ */
+export interface GeoJSONGeometry {
+  type: 'LineString';
+  coordinates: [number, number][]; // [lon, lat]
+}
+
+/**
+ * Clean public toll plaza item without internal OSRM/DB leak
+ */
+export interface PublicTollPlaza {
+  id: string;
+  name: string;
+  price: number;
+  latitude: number;
+  longitude: number;
+}
+
+/**
+ * Public route option representation for Mobile client
+ */
+export interface PublicRouteOption {
+  id: string;
+  type: RouteType;
+  title: string;
+  distanceKm: number;
+  durationMinutes: number;
+  cost: CostBreakdown;
+  geometry: GeoJSONGeometry;
+  tolls: PublicTollPlaza[];
+  comparison?: RouteComparison;
+  explanation: RouteExplanation;
+}
+
+/**
+ * Canonical route search request payload for public API
+ */
+export interface RouteSearchRequest {
+  origin: Waypoint;
+  destination: Waypoint;
+  vehicle?: {
+    type?: VehicleType;
+    fuelType?: FuelType;
+    fuelEfficiencyKmPerLiter?: number;
+    fuelPricePerLiter?: number;
+  };
+  preferences?: {
+    strategy?: RoutePreferenceMode;
+    timeValue?: number;
+  };
+}
+
+/**
+ * Canonical route search response payload for public Mobile API
+ */
+export interface RouteSearchResponse {
+  searchId: string;
+  origin: Waypoint;
+  destination: Waypoint;
+  recommendedRouteId: string;
+  routes: PublicRouteOption[];
+  calculatedAt: string;
+}
+
+/**
  * Route calculation request payload
  */
 export interface RouteCalculationRequest {
