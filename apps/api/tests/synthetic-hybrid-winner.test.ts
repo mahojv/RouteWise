@@ -22,8 +22,8 @@ class SyntheticWinnerMockProvider implements RoutingProvider {
   public async calculateRoute(request: RoutingRequest): Promise<RoutingResponse> {
     this.callCount++;
 
-    const isHybridCall = request.waypoints && request.waypoints.length === 2;
-    const isFreeCall = request.waypoints && request.waypoints.length === 1;
+    const isHybridCall = request.waypoints && request.waypoints.length === 2 && request.waypoints[1].latitude === 20.2450;
+    const isFreeCall = request.waypoints && request.waypoints.length >= 1 && !isHybridCall;
 
     if (isHybridCall) {
       // HYBRID: 130 min (7800s), Toll $0 (evade la de $108 y no cruza peaje)
@@ -38,8 +38,8 @@ class SyntheticWinnerMockProvider implements RoutingProvider {
             geometry: {
               type: 'LineString',
               coordinates: [
-                [-99.9920, 20.3850], // Pasa por E_out
-                [-99.8850, 20.2520], // Pasa por E_in
+                [-99.6521, 20.3742], // Pasa por E_out
+                [-99.5850, 20.2450], // Pasa por E_in
                 [-99.1332, 19.4326],
               ],
             },
@@ -121,6 +121,8 @@ class SyntheticWinnerMockProvider implements RoutingProvider {
   }
 }
 
+import { FIXTURE_CURATED_BYPASSES } from '../src/fixtures/bypasses.fixture';
+
 describe('Synthetic Hybrid Winner Deterministic Test (Phase 3 MVP)', () => {
   it('Evaluates MONEY -> FREE, TIME -> FAST, and BALANCED -> HYBRID without time double-counting', async () => {
     const mockProvider = new SyntheticWinnerMockProvider();
@@ -130,7 +132,7 @@ describe('Synthetic Hybrid Winner Deterministic Test (Phase 3 MVP)', () => {
       undefined,
       undefined,
       undefined,
-      undefined,
+      new TollBypassResolverService(FIXTURE_CURATED_BYPASSES),
       undefined,
       undefined,
       mockProvider

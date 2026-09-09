@@ -7,7 +7,7 @@ class UnexpectedTollMockProvider implements RoutingProvider {
   public readonly name = 'unexpected-toll-mock';
 
   public async calculateRoute(request: RoutingRequest): Promise<RoutingResponse> {
-    const isHybridCall = request.waypoints && request.waypoints.length === 2;
+    const isHybridCall = request.waypoints && request.waypoints.length === 2 && request.waypoints[1].latitude === 20.2450;
 
     if (isHybridCall) {
       // Evade Palmillas pero cruza Caseta Querétaro - Celaya [-100.4851, 20.5512] ($95 MXN)
@@ -22,9 +22,9 @@ class UnexpectedTollMockProvider implements RoutingProvider {
               type: 'LineString',
               coordinates: [
                 [-100.3899, 20.5888],
-                [-99.9920, 20.3850], // E_out de Palmillas
+                [-99.6521, 20.3742], // E_out de Palmillas
                 [-100.4851, 20.5512], // Caseta Celaya ($95)
-                [-99.8850, 20.2520], // E_in de Palmillas
+                [-99.5850, 20.2450], // E_in de Palmillas
                 [-99.1332, 19.4326],
               ],
             },
@@ -79,6 +79,9 @@ class UnexpectedTollMockProvider implements RoutingProvider {
   }
 }
 
+import { TollBypassResolverService } from '../src/modules/tolls/toll-bypass-resolver.service';
+import { FIXTURE_CURATED_BYPASSES } from '../src/fixtures/bypasses.fixture';
+
 describe('Unexpected Toll Retention & Cost Recalculation Test', () => {
   it('Retains unexpected tolls found along hybrid bypass and recalculates total cost', async () => {
     const provider = new UnexpectedTollMockProvider();
@@ -88,7 +91,7 @@ describe('Unexpected Toll Retention & Cost Recalculation Test', () => {
       undefined,
       undefined,
       undefined,
-      undefined,
+      new TollBypassResolverService(FIXTURE_CURATED_BYPASSES),
       undefined,
       undefined,
       provider

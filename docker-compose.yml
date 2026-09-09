@@ -8,6 +8,8 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-routewise}
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    ports:
+      - '5432:5432'
     restart: unless-stopped
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-routewise} -d ${POSTGRES_DB:-routewise}']

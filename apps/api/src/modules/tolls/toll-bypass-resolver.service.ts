@@ -7,6 +7,14 @@ export interface RouteGeometryHolder {
   };
 }
 
+export type CuratedBypassMap = Record<string, {
+  exitPoint: Coordinate;
+  reentryPoint: Coordinate;
+  name?: string;
+  confidence?: number;
+  isVerified?: boolean;
+}>;
+
 /**
  * Calcula la distancia Haversine en metros entre dos coordenadas [lon, lat]
  */
@@ -66,38 +74,16 @@ export function getCumulativeDistanceToPoint(
   };
 }
 
-/**
- * Bypasses curados conocidos en memoria para fallback / tests offline sin PostgreSQL
- */
-export const KNOWN_CURATED_BYPASSES: Record<string, {
-  exitPoint: Coordinate;
-  reentryPoint: Coordinate;
-  name: string;
-  confidence: number;
-  isVerified: boolean;
-}> = {
-  // Palmillas (Autopista 57D km 148)
-  'plaza-palmillas': {
-    exitPoint: { latitude: 20.3850, longitude: -99.9920 },
-    reentryPoint: { latitude: 20.2520, longitude: -99.8850 },
-    name: 'Bypass San Juan del Río / Huichapan (Carretera Libre 45/57)',
-    confidence: 1.0,
-    isVerified: true,
-  },
-  // Tepotzotlán (Autopista 57D km 43)
-  'plaza-tepotzotlan': {
-    exitPoint: { latitude: 19.8250, longitude: -99.2780 },
-    reentryPoint: { latitude: 19.6450, longitude: -99.1850 },
-    name: 'Bypass Jorobas / Vía Gustavo Baz (Carretera Libre Huehuetoca)',
-    confidence: 1.0,
-    isVerified: true,
-  },
-};
-
 export class TollBypassResolverService {
+  private fallbackBypasses?: CuratedBypassMap;
+
+  constructor(fallbackBypasses?: CuratedBypassMap) {
+    this.fallbackBypasses = fallbackBypasses;
+  }
+
   /**
    * Resuelve deterministamente un bypass para una caseta de cobro (100% local, 0 llamadas OSRM)
-   * Tier 1: CURATED (Base de datos / Seed verificado)
+   * Tier 1: CURATED (Base de datos PostgreSQL - Única Fuente de Verdad)
    * Tier 2: ROUTE_DIVERGENCE (Requiere FreeBaseRoute)
    * Tier 3: NO_BYPASS (Retorna null)
    */
@@ -112,7 +98,7 @@ export class TollBypassResolverService {
     }
 
     // -------------------------------------------------------------
-    // TIER 1: CURATED (Consultar en base de datos o fallback en memoria)
+    // TIER 1: CURATED (Consultar en base de datos PostgreSQL)
     // -------------------------------------------------------------
     const curatedFromDb = await this.findCuratedInDb(toll.tollPlazaId);
     if (curatedFromDb && curatedFromDb.isVerified) {
@@ -132,27 +118,29 @@ export class TollBypassResolverService {
       };
     }
 
-    // Fallback de bypass curado en memoria (para tests deterministas sin DB)
-    const curatedInMemory = KNOWN_CURATED_BYPASSES[toll.tollPlazaId] ||
-      Object.entries(KNOWN_CURATED_BYPASSES).find(([k]) =>
-        toll.name?.toLowerCase().includes(k.replace('plaza-', ''))
-      )?.[1];
+    // Fallback opcional inyectado vía DI para tests unitarios offline sin conexión DB activa
+    if (this.fallbackBypasses) {
+      const curatedFixture = this.fallbackBypasses[toll.tollPlazaId] ||
+        Object.entries(this.fallbackBypasses).find(([k]) =>
+          toll.name?.toLowerCase().includes(k.replace('plaza-', ''))
+        )?.[1];
 
-    if (curatedInMemory && curatedInMemory.isVerified) {
-      const exitCalc = getCumulativeDistanceToPoint(curatedInMemory.exitPoint, fastCoords);
-      const reentryCalc = getCumulativeDistanceToPoint(curatedInMemory.reentryPoint, fastCoords);
+      if (curatedFixture && (curatedFixture.isVerified ?? true)) {
+        const exitCalc = getCumulativeDistanceToPoint(curatedFixture.exitPoint, fastCoords);
+        const reentryCalc = getCumulativeDistanceToPoint(curatedFixture.reentryPoint, fastCoords);
 
-      return {
-        tollPlazaId: toll.tollPlazaId,
-        exitPoint: curatedInMemory.exitPoint,
-        reentryPoint: curatedInMemory.reentryPoint,
-        exitDistanceMeters: exitCalc.distanceMeters,
-        reentryDistanceMeters: reentryCalc.distanceMeters,
-        confidence: curatedInMemory.confidence,
-        source: 'CURATED',
-        isVerified: true,
-        name: curatedInMemory.name,
-      };
+        return {
+          tollPlazaId: toll.tollPlazaId,
+          exitPoint: curatedFixture.exitPoint,
+          reentryPoint: curatedFixture.reentryPoint,
+          exitDistanceMeters: exitCalc.distanceMeters,
+          reentryDistanceMeters: reentryCalc.distanceMeters,
+          confidence: curatedFixture.confidence ?? 1.0,
+          source: 'CURATED',
+          isVerified: true,
+          name: curatedFixture.name,
+        };
+      }
     }
 
     // -------------------------------------------------------------
@@ -183,12 +171,15 @@ export class TollBypassResolverService {
   } | null> {
     try {
       const pool = getDbPool();
+      const nameKey = tollPlazaId.replace('plaza-', '');
       const res = await pool.query(`
-        SELECT exit_lat, exit_lng, reentry_lat, reentry_lng, exit_name, reentry_name, confidence, is_verified, notes
-        FROM toll_bypasses
-        WHERE toll_plaza_id = $1 AND is_verified = TRUE
+        SELECT b.exit_lat, b.exit_lng, b.reentry_lat, b.reentry_lng, b.exit_name, b.reentry_name, b.confidence, b.is_verified, b.notes
+        FROM toll_bypasses b
+        JOIN toll_plazas tp ON tp.id = b.toll_plaza_id
+        WHERE (b.toll_plaza_id::text = $1 OR tp.name ILIKE '%' || $2 || '%')
+          AND b.is_verified = TRUE
         LIMIT 1;
-      `, [tollPlazaId]);
+      `, [tollPlazaId, nameKey]);
 
       if (res.rows.length === 0) {
         return null;

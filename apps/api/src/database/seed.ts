@@ -8,6 +8,10 @@ export async function runSeed() {
 
   try {
     await client.query(`
+      TRUNCATE toll_bypasses, toll_rates, toll_plazas CASCADE;
+    `);
+
+    await client.query(`
       INSERT INTO vehicles (name, fuel_type, fuel_consumption, fuel_price, vehicle_type)
       VALUES
         ('Mazda 3 Sedán (Gasolina)', 'gasolina_regular', 14.5, 24.50, 'automovil'),
@@ -38,6 +42,7 @@ export async function runSeed() {
         name: 'Caseta Palmillas (Autopista México - Querétaro 57D)',
         operator: 'CAPUFE',
         highway: 'MEX-057D',
+        road: 'México - Querétaro',
         lat: 20.3069,
         lon: -99.9349,
         km_marker: 148.0,
@@ -51,15 +56,15 @@ export async function runSeed() {
         bypasses: [
           {
             direction: 'both',
-            exit_lat: 20.3850,
-            exit_lng: -99.9920,
-            reentry_lat: 20.2520,
-            reentry_lng: -99.8850,
-            exit_name: 'Desvío San Juan del Río / Huichapan (Carretera Libre 45/57)',
-            reentry_name: 'Reincorporación Autopista 57D Polotitlán / El Ruano',
+            exit_lat: 20.3742,
+            exit_lng: -99.6521,
+            reentry_lat: 20.2450,
+            reentry_lng: -99.5850,
+            exit_name: 'Desvío Huichapan (Carretera Libre 45/55)',
+            reentry_name: 'Reincorporación Nopala / Polotitlán 57D',
             confidence: 1.0,
             is_verified: true,
-            notes: 'Bypass verificado de Caseta Palmillas por San Juan del Río / Huichapan',
+            notes: 'Bypass verificado de Caseta Palmillas por Huichapan y Nopala',
           },
         ],
       },
@@ -67,6 +72,7 @@ export async function runSeed() {
         name: 'Caseta Tepotzotlán (Autopista México - Querétaro 57D)',
         operator: 'CAPUFE',
         highway: 'MEX-057D',
+        road: 'México - Querétaro',
         lat: 19.7144,
         lon: -99.2075,
         km_marker: 43.0,
@@ -80,15 +86,15 @@ export async function runSeed() {
         bypasses: [
           {
             direction: 'both',
-            exit_lat: 19.8250,
-            exit_lng: -99.2780,
-            reentry_lat: 19.6450,
-            reentry_lng: -99.1850,
-            exit_name: 'Salida Jorobas / Libre Huehuetoca - Cuautitlán',
-            reentry_name: 'Reincorporación Vía Gustavo Baz / Periférico Norte',
+            exit_lat: 19.8550,
+            exit_lng: -99.2880,
+            reentry_lat: 19.7480,
+            reentry_lng: -99.1650,
+            exit_name: 'Salida Jorobas / Libre Huehuetoca',
+            reentry_name: 'Reincorporación Teoloyucan / Cuautitlán',
             confidence: 1.0,
             is_verified: true,
-            notes: 'Bypass verificado de Caseta Tepotzotlán por Jorobas y Vía Gustavo Baz',
+            notes: 'Bypass verificado de Caseta Tepotzotlán por Jorobas y Teoloyucan',
           },
         ],
       },
@@ -153,16 +159,17 @@ export async function runSeed() {
     for (const plaza of samplePlazas) {
       const plazaRes = await client.query(`
         INSERT INTO toll_plazas (
-          name, operator, highway, latitude, longitude, geom, km_marker, direction, source_id
+          name, operator, highway, road, latitude, longitude, geom, km_marker, direction, source_id
         )
         VALUES (
-          $1, $2, $3, $4, $5, ST_SetSRID(ST_MakePoint($5, $4), 4326), $6, $7, $8
+          $1, $2, $3, $4, $5, $6, ST_SetSRID(ST_MakePoint($6, $5), 4326), $7, $8, $9
         )
         RETURNING id;
       `, [
         plaza.name,
         plaza.operator,
         plaza.highway,
+        plaza.road || null,
         plaza.lat,
         plaza.lon,
         plaza.km_marker,

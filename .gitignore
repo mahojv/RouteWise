@@ -46,9 +46,13 @@ pino-*.log
 *.sw?
 Thumbs.db
 
-# Docker Data
+# Map Data & OSRM
 docker/data/
 docker/osrm/data/
+docker/osrm/test-data/
+*.osm.pbf
+*.pbf
+*.osrm*
 
 # Drizzle cache
 .drizzle/

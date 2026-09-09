@@ -124,6 +124,7 @@ export interface TollEvent {
   name: string;
   operator: string;
   highway?: string;
+  road?: string;
   latitude: number;
   longitude: number;
   price: number;
@@ -132,6 +133,9 @@ export interface TollEvent {
   routePosition: number; // 0.00 (start of route) to 1.00 (end of route)
   paymentMethod?: TollPaymentMethod;
   isAvoided?: boolean;
+  distanceToRouteMeters?: number;
+  confidence?: 'HIGH' | 'MEDIUM' | 'LOW';
+  matchStatus?: 'MATCHED' | 'FALLBACK_MATCHED' | 'UNMATCHED';
 }
 
 /**
@@ -243,9 +247,14 @@ export interface RouteOption {
   tollPlazas: Array<{
     id: string;
     name: string;
+    highway?: string;
+    road?: string;
     price: number;
     latitude: number;
     longitude: number;
+    distanceToRouteMeters?: number;
+    confidence?: string;
+    matchStatus?: string;
   }>;
   segments: RouteSegment[];
   costBreakdown: CostBreakdown; // Backwards-compatible alias

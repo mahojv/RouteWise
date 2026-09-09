@@ -194,13 +194,17 @@ export class CapufeCsvImporter implements TollDataImporter {
           await client.query(`
             UPDATE toll_plazas
             SET highway = COALESCE($1, highway),
+                road = COALESCE($9, road),
                 operator = COALESCE($2, operator),
                 km_marker = COALESCE($3, km_marker),
                 direction = COALESCE($4, direction),
                 source_id = $5,
+                latitude = $6,
+                longitude = $7,
+                geom = ST_SetSRID(ST_MakePoint($7, $6), 4326),
                 updated_at = NOW()
-            WHERE id = $6;
-          `, [plaza.highwayCode, plaza.operator, plaza.kmMarker, plaza.direction, sourceId, plazaId]);
+            WHERE id = $8;
+          `, [plaza.highwayCode, plaza.operator, plaza.kmMarker, plaza.direction, sourceId, plaza.latitude, plaza.longitude, plazaId, plaza.roadName]);
           result.plazasUpdated++;
         } else {
           const insertRes = await client.query(`

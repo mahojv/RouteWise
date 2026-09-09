@@ -195,13 +195,13 @@ export class RouteOptimizationService {
 
     // 2. Si no hay alternativa libre nativa, consultar anchor point (1 llamada adicional)
     if (!freeBaseRawRoute && osrmCallsCount < 5) {
-      const anchor = await this.freeCorridorAnchor.getAnchor(request.origin, request.destination);
-      if (anchor) {
+      const anchors = await this.freeCorridorAnchor.getAnchors(request.origin, request.destination);
+      if (anchors && anchors.length > 0) {
         try {
           const freeRes = await routingProvider.calculateRoute({
             origin: request.origin,
             destination: request.destination,
-            waypoints: [anchor],
+            waypoints: anchors,
           });
           osrmCallsCount++;
 
@@ -606,9 +606,14 @@ export class RouteOptimizationService {
       tollPlazas: tolls.map((e) => ({
         id: e.tollPlazaId,
         name: e.name,
+        highway: e.highway,
+        road: e.road,
         price: e.price,
         latitude: e.latitude,
         longitude: e.longitude,
+        distanceToRouteMeters: e.distanceToRouteMeters,
+        confidence: e.confidence ?? 'HIGH',
+        matchStatus: e.matchStatus ?? 'MATCHED',
       })),
       segments,
       costBreakdown: cost,
