@@ -57,19 +57,19 @@ services:
       - OSRM_URL=http://osrm:5000
     restart: unless-stopped
 
+  web:
+    build:
+      context: .
+      dockerfile: apps/mobile/Dockerfile
+    image: routewise-web:latest
+    container_name: routewise-web
+    networks:
+      - routewise-network
+    restart: unless-stopped
+
 networks:
   routewise-network:
     driver: bridge
 
 volumes:
   postgres_data:
-
-web:
-  build:
-    context: .
-    dockerfile: apps/mobile/Dockerfile
-  image: routewise-web:latest
-  container_name: routewise-web
-  networks:
-    - routewise-network
-  restart: unless-stopped
