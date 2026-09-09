@@ -140,8 +140,8 @@ export class TollCostService {
         unknownCount++;
         // UNKNOWN nunca debe asumirse $0 silenciosamente
       } else {
-        totalCashCost += evt.price;
-        totalElectronicCost += evt.price;
+        totalCashCost += evt.price ?? 0;
+        totalElectronicCost += evt.price ?? 0;
         if (evt.priceStatus === 'OUTDATED') {
           outdatedCount++;
         }

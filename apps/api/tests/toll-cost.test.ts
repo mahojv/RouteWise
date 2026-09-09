@@ -56,7 +56,7 @@ describe('TollCostService Unit Tests', () => {
         name: 'Caseta Desconocida',
         latitude: 20.0,
         longitude: -99.5,
-        price: 0,
+        price: null,
         priceStatus: 'UNKNOWN',
         routePosition: 0.5,
       },

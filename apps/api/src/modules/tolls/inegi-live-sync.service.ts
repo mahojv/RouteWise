@@ -5,13 +5,16 @@ import { env } from '../../config/env';
 
 export interface InegiLiveSyncResult {
   liveTollsFound: number;
+  cuotaTollsFound: number;
+  libreTollsFound: number;
   updatedPrices: Map<string, number>;
-  totalInegiCost?: number;
+  totalCuotaCost?: number;
+  totalLibreCost?: number;
 }
 
 export class InegiLiveSyncService {
   private getApiKey(): string {
-    return process.env.INEGI_SAKBE_API_KEY || env.INEGI_SAKBE_API_KEY || 'kqvCNH1V-keUF-rSVa-O1tf-gdqFN6DynMNN';
+    return process.env.INEGI_SAKBE_API_KEY || env.INEGI_SAKBE_API_KEY || '';
   }
 
   /**
@@ -96,143 +99,87 @@ export class InegiLiveSyncService {
 
       // Si no fue posible resolver ni por coordenadas ni por nombre, terminar
       if (!isDestToDest && (!origId || !destId)) {
-        return { liveTollsFound: 0, updatedPrices };
+        return { liveTollsFound: 0, cuotaTollsFound: 0, libreTollsFound: 0, updatedPrices };
       }
 
-      // 3. Consultar detalle de casetas a la API de INEGI Sakbe
+      // 3. Consultar detalle de casetas a la API de INEGI Sakbe (detalle_c y detalle_l por separado)
       const vehicleCode = vehicleType === 'motocicleta' ? '0' : vehicleType === 'autobus' ? '2' : vehicleType === 'camion_2_ejes' ? '5' : '1';
 
       const routeBody = isDestToDest
         ? new URLSearchParams({
-            dest_i: String(destOrigId),
-            dest_f: String(destDestId),
-            v: vehicleCode,
-            type: 'json',
-            key,
-          })
+          dest_i: String(destOrigId),
+          dest_f: String(destDestId),
+          v: vehicleCode,
+          type: 'json',
+          key,
+        })
         : new URLSearchParams({
-            id_i: String(origId),
-            source_i: String(origSource),
-            target_i: String(origTarget),
-            id_f: String(destId),
-            source_f: String(destSource),
-            target_f: String(destTarget),
-            v: vehicleCode,
-            type: 'json',
-            key,
-          });
+          id_i: String(origId),
+          source_i: String(origSource),
+          target_i: String(origTarget),
+          id_f: String(destId),
+          source_f: String(destSource),
+          target_f: String(destTarget),
+          v: vehicleCode,
+          type: 'json',
+          key,
+        });
 
-      const detailJson: any = await fetchWithTimeout('https://gaia.inegi.org.mx/sakbe_v3.1/detalle_c', routeBody).catch(() => null);
+      // Consultar detalle_c (cuota) y detalle_l (libre) en paralelo
+      const [detailCuotaJson, detailLibreJson] = await Promise.all([
+        fetchWithTimeout('https://gaia.inegi.org.mx/sakbe_v3.1/detalle_c', routeBody).catch(() => null),
+        fetchWithTimeout('https://gaia.inegi.org.mx/sakbe_v3.1/detalle_l', routeBody).catch(() => null),
+      ]);
 
-      if (!detailJson?.data || !Array.isArray(detailJson.data)) {
-        return { liveTollsFound: 0, updatedPrices };
+      const parser = new (await import('./sakbe-toll-parser.service')).SakbeTollParserService();
+      const cuotaItems = detailCuotaJson?.data ? parser.parseSakbeDetail(detailCuotaJson, 'SAKBE_DETALLE_C') : [];
+      const libreItems = detailLibreJson?.data ? parser.parseSakbeDetail(detailLibreJson, 'SAKBE_DETALLE_L') : [];
+
+      // Calcular costos y registrar precios para cada ruta de forma independiente
+      let totalCuotaCost = 0;
+      for (const item of cuotaItems) {
+        if (item.price !== null && item.priceStatus === 'VALID') {
+          totalCuotaCost += item.price;
+          updatedPrices.set(item.name, item.price);
+        }
       }
 
-      const pool = getDbPool();
-      let liveTollsFound = 0;
-      let totalInegiCost = 0;
-
-      // Obtener o crear sourceId para INEGI_SAKBE
-      const srcRes = await pool.query(`
-        INSERT INTO data_sources (name, code, url, description, last_synced_at)
-        VALUES ('Instituto Nacional de Estadística y Geografía (INEGI Sakbe v3.1)', 'INEGI_SAKBE', 'https://gaia.inegi.org.mx/sakbe_v3.1/', 'Tarifas y red vial oficial del INEGI', NOW())
-        ON CONFLICT (code) DO UPDATE SET last_synced_at = NOW()
-        RETURNING id;
-      `);
-      const sourceId = srcRes.rows[0]?.id;
-
-      for (const seg of detailJson.data) {
-        const isTollSegment = Boolean(seg.punto_caseta) || (seg.direccion && /^Cruce la caseta/i.test(seg.direccion)) || (seg.costo_caseta !== undefined && seg.costo_caseta !== null && String(seg.costo_caseta).trim() !== '');
-
-        if (isTollSegment) {
-          const price = parseFloat(seg.costo_caseta || '0') || 0;
-          totalInegiCost += price;
-
-          let lat = NaN;
-          let lon = NaN;
-
-          if (seg.punto_caseta) {
-            try {
-              const geo = typeof seg.punto_caseta === 'string' ? JSON.parse(seg.punto_caseta) : seg.punto_caseta;
-              if (geo.coordinates) {
-                lon = parseFloat(geo.coordinates[0]);
-                lat = parseFloat(geo.coordinates[1]);
-              }
-            } catch {
-              // ignorar parse err
-            }
-          }
-
-          const rawName = String(seg.direccion || 'Caseta').replace(/^Cruce la caseta\s+/i, '').trim();
-          const normName = normalizePlazaName(rawName);
-
-          updatedPrices.set(normName, price);
-          liveTollsFound++;
-
-          // Si tenemos coordenadas de la caseta enviadas en vivo por INEGI Sakbe, hacer upsert en PostgreSQL
-          if (!isNaN(lat) && !isNaN(lon)) {
-            try {
-              const existingPlaza = await pool.query(`
-                SELECT id FROM toll_plazas
-                WHERE name = $1 OR (ST_DWithin(geom::geography, ST_SetSRID(ST_MakePoint($2, $3), 4326)::geography, 200))
-                LIMIT 1;
-              `, [normName, lon, lat]);
-
-              let plazaId: string;
-
-              if (existingPlaza.rows.length > 0) {
-                plazaId = existingPlaza.rows[0].id;
-                await pool.query(`
-                  UPDATE toll_plazas
-                  SET latitude = $1, longitude = $2, geom = ST_SetSRID(ST_MakePoint($2, $1), 4326), updated_at = NOW()
-                  WHERE id = $3;
-                `, [lat, lon, plazaId]);
-              } else {
-                const insRes = await pool.query(`
-                  INSERT INTO toll_plazas (name, operator, highway, road, latitude, longitude, geom, direction, source_id)
-                  VALUES ($1, 'INEGI / CAPUFE', $2, $3, $4, $5, ST_SetSRID(ST_MakePoint($5, $4), 4326), 'both', $6)
-                  RETURNING id;
-                `, [normName, normalizeHighway(seg.nombre), seg.direccion, lat, lon, sourceId]);
-                plazaId = insRes.rows[0]?.id;
-              }
-
-              if (plazaId) {
-                await pool.query(`
-                  INSERT INTO toll_rates (
-                    toll_plaza_id,
-                    vehicle_type,
-                    cash_price,
-                    electronic_price,
-                    currency,
-                    source_id,
-                    effective_from,
-                    last_verified_at,
-                    created_at,
-                    updated_at
-                  )
-                  VALUES ($1, $2, $3, $3, 'MXN', $4, NOW(), NOW(), NOW(), NOW())
-                  ON CONFLICT (toll_plaza_id, vehicle_type)
-                  DO UPDATE SET
-                    cash_price = EXCLUDED.cash_price,
-                    electronic_price = EXCLUDED.electronic_price,
-                    currency = EXCLUDED.currency,
-                    source_id = EXCLUDED.source_id,
-                    last_verified_at = NOW(),
-                    updated_at = NOW();
-                `, [plazaId, vehicleType, price, sourceId]);
-              }
-            } catch (dbErr) {
-              console.warn(`⚠️ Error guardando caseta en vivo '${normName}':`, dbErr);
-            }
+      let totalLibreCost = 0;
+      for (const item of libreItems) {
+        if (item.price !== null && item.priceStatus === 'VALID') {
+          totalLibreCost += item.price;
+          // Solo registrar en updatedPrices si no fue ya definida por la ruta de cuota
+          if (!updatedPrices.has(item.name)) {
+            updatedPrices.set(item.name, item.price);
           }
         }
       }
 
-      console.log(`📡 INEGI Sakbe Live Sync: ${liveTollsFound} casetas encontradas para esta ruta en vivo (Costo Total INEGI: $${totalInegiCost} MXN).`);
-      return { liveTollsFound, updatedPrices, totalInegiCost };
+      // Persistir descubrimientos de cada ruta por separado conservando su origen
+      if (cuotaItems.length > 0) {
+        await parser.persistDiscoveredTolls(cuotaItems, vehicleType as any);
+      }
+      if (libreItems.length > 0) {
+        await parser.persistDiscoveredTolls(libreItems, vehicleType as any);
+      }
+
+      const cuotaTollsFound = cuotaItems.length;
+      const libreTollsFound = libreItems.length;
+      const liveTollsFound = cuotaTollsFound + libreTollsFound;
+
+      console.log(`📡 INEGI Sakbe Live Sync: Cuota [${cuotaTollsFound} casetas, $${totalCuotaCost} MXN] | Libre [${libreTollsFound} casetas, $${totalLibreCost} MXN]`);
+
+      return {
+        liveTollsFound,
+        cuotaTollsFound,
+        libreTollsFound,
+        updatedPrices,
+        totalCuotaCost,
+        totalLibreCost,
+      };
     } catch (err) {
       console.warn('⚠️ Falló la sincronización en vivo con INEGI Sakbe:', err);
-      return { liveTollsFound: 0, updatedPrices };
+      return { liveTollsFound: 0, cuotaTollsFound: 0, libreTollsFound: 0, updatedPrices };
     }
   }
 }

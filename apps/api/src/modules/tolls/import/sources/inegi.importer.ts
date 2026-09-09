@@ -1,5 +1,6 @@
 import { TollDataImporter, RawTollRecord, ImportResult, ImportValidationWarning } from '../importer.interface';
 import { normalizeHighway, normalizePlazaName, isWithinMexicoBounds } from '../normalizer';
+import { SakbeTollParserService } from '../../sakbe-toll-parser.service';
 import { getDbPool } from '../../../../database';
 import { env } from '../../../../config/env';
 
@@ -57,49 +58,22 @@ export class InegiSakbeImporter implements TollDataImporter {
     }
 
     try {
-      const parsed = JSON.parse(rawContent);
-      const items = Array.isArray(parsed) ? parsed : (parsed.data || parsed.records || [parsed]);
+      const parser = new SakbeTollParserService();
+      const items = parser.parseSakbeDetail(rawContent);
 
       for (const item of items) {
-        if (!item) continue;
-
-        let lat = NaN;
-        let lon = NaN;
-
-        if (item.punto_caseta) {
-          try {
-            const geoObj = typeof item.punto_caseta === 'string' ? JSON.parse(item.punto_caseta) : item.punto_caseta;
-            if (geoObj.coordinates && Array.isArray(geoObj.coordinates)) {
-              lon = parseFloat(geoObj.coordinates[0]);
-              lat = parseFloat(geoObj.coordinates[1]);
-            }
-          } catch {
-            // Continuar si la geometría no es GeoJSON directo
-          }
-        }
-
-        if (isNaN(lat) && item.latitude) lat = parseFloat(item.latitude);
-        if (isNaN(lon) && item.longitude) lon = parseFloat(item.longitude);
-        if (isNaN(lat) && item.lat) lat = parseFloat(item.lat);
-        if (isNaN(lon) && item.lon) lon = parseFloat(item.lon);
-
-        const rawName = item.direccion || item.caseta || item.nombre || item.plazaName;
-        const price = parseFloat(item.costo_caseta || item.precio || item.cashPrice || 0);
-        const highway = item.carretera || item.nombre_vialidad || item.highwayCode;
-
-        if (rawName && !isNaN(lat) && !isNaN(lon)) {
-          records.push({
-            plazaName: String(rawName).replace(/^Cruce la caseta\s+/i, '').trim(),
-            highwayCode: highway ? String(highway) : undefined,
-            operator: 'CAPUFE / CONCESIONARIO',
-            latitude: lat,
-            longitude: lon,
-            direction: 'both',
-            vehicleType: 'automovil',
-            cashPrice: price,
-            electronicPrice: price,
-          });
-        }
+        records.push({
+          plazaName: item.name,
+          highwayCode: item.highway,
+          roadName: item.road,
+          operator: 'INEGI / CAPUFE',
+          latitude: item.latitude,
+          longitude: item.longitude,
+          direction: 'both',
+          vehicleType: 'automovil',
+          cashPrice: item.price ?? 0,
+          electronicPrice: item.price ?? 0,
+        });
       }
     } catch {
       // Si el rawContent no es JSON directamente, retornar arreglo vacío
@@ -165,42 +139,22 @@ export class InegiSakbeImporter implements TollDataImporter {
         const detailRes = await this.fetchWithTimeout('https://gaia.inegi.org.mx/sakbe_v3.1/detalle_c', body, timeoutMs);
         const detailJson: any = await detailRes.json();
 
-        if (detailJson && detailJson.data && Array.isArray(detailJson.data)) {
-          for (const seg of detailJson.data) {
-            const isToll = Boolean(seg.punto_caseta) || /^Cruce la caseta/i.test(seg.direccion || '') || (seg.costo_caseta !== undefined && seg.costo_caseta !== null && String(seg.costo_caseta).trim() !== '');
-            if (isToll) {
-              let lat = NaN;
-              let lon = NaN;
+        const parser = new SakbeTollParserService();
+        const items = parser.parseSakbeDetail(detailJson, 'SAKBE_DETALLE_C');
 
-              if (seg.punto_caseta) {
-                try {
-                  const geo = typeof seg.punto_caseta === 'string' ? JSON.parse(seg.punto_caseta) : seg.punto_caseta;
-                  if (geo.coordinates) {
-                    lon = parseFloat(geo.coordinates[0]);
-                    lat = parseFloat(geo.coordinates[1]);
-                  }
-                } catch {
-                  // ignorar parse err
-                }
-              }
-
-              const price = parseFloat(seg.costo_caseta || '0') || 0;
-              const rawName = (seg.direccion || 'Caseta').replace(/^Cruce la caseta\s+/i, '').trim();
-
-              if (!isNaN(lat) && !isNaN(lon)) {
-                records.push({
-                  plazaName: rawName,
-                  operator: 'INEGI / SCT',
-                  latitude: lat,
-                  longitude: lon,
-                  direction: 'both',
-                  vehicleType: 'automovil',
-                  cashPrice: price,
-                  electronicPrice: price,
-                });
-              }
-            }
-          }
+        for (const item of items) {
+          records.push({
+            plazaName: item.name,
+            highwayCode: item.highway,
+            roadName: item.road,
+            operator: 'INEGI / CAPUFE',
+            latitude: item.latitude,
+            longitude: item.longitude,
+            direction: 'both',
+            vehicleType: 'automovil',
+            cashPrice: item.price ?? 0,
+            electronicPrice: item.price ?? 0,
+          });
         }
       } catch (err: any) {
         console.warn(`⚠️ Error obteniendo detalle de ruta INEGI [${corridor.origin} -> ${corridor.destination}]:`, err.message || String(err));

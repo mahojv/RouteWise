@@ -30,7 +30,7 @@ export function normalizePlazaName(input: string): string {
   return input
     .trim()
     .replace(/\s+/g, ' ')
-    .replace(/^CASETA\s+(?:DE\s+COBRO\s+)?/i, '')
+    .replace(/^(?:Cruce\s+la\s+caseta|CASETA\s+(?:DE\s+COBRO\s+)?)/i, '')
     .trim();
 }
 

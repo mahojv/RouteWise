@@ -127,7 +127,7 @@ export interface TollEvent {
   road?: string;
   latitude: number;
   longitude: number;
-  price: number;
+  price: number | null;
   priceStatus: TollPriceStatus;
   effectiveDate?: string;
   routePosition: number; // 0.00 (start of route) to 1.00 (end of route)
@@ -136,6 +136,10 @@ export interface TollEvent {
   distanceToRouteMeters?: number;
   confidence?: 'HIGH' | 'MEDIUM' | 'LOW';
   matchStatus?: 'MATCHED' | 'FALLBACK_MATCHED' | 'UNMATCHED';
+  sourceProvider?: string;
+  sourceEventType?: 'SAKBE_DETALLE_C' | 'SAKBE_DETALLE_L' | 'SAKBE_DETALLE_O' | 'SAKBE_DETALLE' | 'STATIC' | 'MANUAL';
+  observedPrice?: number;
+  giro?: number;
 }
 
 /**
@@ -249,7 +253,7 @@ export interface RouteOption {
     name: string;
     highway?: string;
     road?: string;
-    price: number;
+    price: number | null;
     latitude: number;
     longitude: number;
     distanceToRouteMeters?: number;
@@ -276,7 +280,7 @@ export interface GeoJSONGeometry {
 export interface PublicTollPlaza {
   id: string;
   name: string;
-  price: number;
+  price: number | null;
   latitude: number;
   longitude: number;
 }
