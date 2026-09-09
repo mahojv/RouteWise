@@ -1,18 +1,28 @@
-import { Coordinate } from '@routewise/types';
+import { Coordinate, TollEvent, VehicleType } from '@routewise/types';
 import { getDbPool } from '../../database';
-import { normalizePlazaName, normalizeHighway } from './import/normalizer';
 import { env } from '../../config/env';
+import { SakbeTollParserService, ParsedSakbeTollItem } from './sakbe-toll-parser.service';
 
 export interface InegiLiveSyncResult {
   liveTollsFound: number;
   cuotaTollsFound: number;
   libreTollsFound: number;
+  cuotaEvents: TollEvent[];
+  libreEvents: TollEvent[];
+  cuotaItems?: ParsedSakbeTollItem[];
+  libreItems?: ParsedSakbeTollItem[];
   updatedPrices: Map<string, number>;
   totalCuotaCost?: number;
   totalLibreCost?: number;
 }
 
 export class InegiLiveSyncService {
+  private parser: SakbeTollParserService;
+
+  constructor(parser?: SakbeTollParserService) {
+    this.parser = parser || new SakbeTollParserService();
+  }
+
   private getApiKey(): string {
     return process.env.INEGI_SAKBE_API_KEY || env.INEGI_SAKBE_API_KEY || '';
   }
@@ -20,14 +30,26 @@ export class InegiLiveSyncService {
   /**
    * Consulta a la API oficial de INEGI Sakbe v3.1 en tiempo real usando coordenadas exactas (buscalinea)
    * o nombres de destino (buscadestino).
+   * Devuelve los TollEvent[] vivos correspondientes a la consulta actual.
    */
   async syncLiveTariffs(
     origin: Coordinate,
     destination: Coordinate,
-    vehicleType = 'automovil'
+    vehicleType: VehicleType = 'automovil'
   ): Promise<InegiLiveSyncResult> {
     const key = this.getApiKey();
     const updatedPrices = new Map<string, number>();
+
+    if (!key) {
+      return {
+        liveTollsFound: 0,
+        cuotaTollsFound: 0,
+        libreTollsFound: 0,
+        cuotaEvents: [],
+        libreEvents: [],
+        updatedPrices,
+      };
+    }
 
     try {
       let origId: string | null = null;
@@ -99,7 +121,14 @@ export class InegiLiveSyncService {
 
       // Si no fue posible resolver ni por coordenadas ni por nombre, terminar
       if (!isDestToDest && (!origId || !destId)) {
-        return { liveTollsFound: 0, cuotaTollsFound: 0, libreTollsFound: 0, updatedPrices };
+        return {
+          liveTollsFound: 0,
+          cuotaTollsFound: 0,
+          libreTollsFound: 0,
+          cuotaEvents: [],
+          libreEvents: [],
+          updatedPrices,
+        };
       }
 
       // 3. Consultar detalle de casetas a la API de INEGI Sakbe (detalle_c y detalle_l por separado)
@@ -131,9 +160,11 @@ export class InegiLiveSyncService {
         fetchWithTimeout('https://gaia.inegi.org.mx/sakbe_v3.1/detalle_l', routeBody).catch(() => null),
       ]);
 
-      const parser = new (await import('./sakbe-toll-parser.service')).SakbeTollParserService();
-      const cuotaItems = detailCuotaJson?.data ? parser.parseSakbeDetail(detailCuotaJson, 'SAKBE_DETALLE_C') : [];
-      const libreItems = detailLibreJson?.data ? parser.parseSakbeDetail(detailLibreJson, 'SAKBE_DETALLE_L') : [];
+      const cuotaItems = detailCuotaJson?.data ? this.parser.parseSakbeDetail(detailCuotaJson, 'SAKBE_DETALLE_C') : [];
+      const libreItems = detailLibreJson?.data ? this.parser.parseSakbeDetail(detailLibreJson, 'SAKBE_DETALLE_L') : [];
+
+      const cuotaEvents = this.parser.toTollEvents(cuotaItems, vehicleType);
+      const libreEvents = this.parser.toTollEvents(libreItems, vehicleType);
 
       // Calcular costos y registrar precios para cada ruta de forma independiente
       let totalCuotaCost = 0;
@@ -155,12 +186,12 @@ export class InegiLiveSyncService {
         }
       }
 
-      // Persistir descubrimientos de cada ruta por separado conservando su origen
+      // Persistir descubrimientos como caché en segundo plano de forma no bloqueante
       if (cuotaItems.length > 0) {
-        await parser.persistDiscoveredTolls(cuotaItems, vehicleType as any);
+        this.parser.persistDiscoveredTolls(cuotaItems, vehicleType).catch(() => {});
       }
       if (libreItems.length > 0) {
-        await parser.persistDiscoveredTolls(libreItems, vehicleType as any);
+        this.parser.persistDiscoveredTolls(libreItems, vehicleType).catch(() => {});
       }
 
       const cuotaTollsFound = cuotaItems.length;
@@ -173,13 +204,24 @@ export class InegiLiveSyncService {
         liveTollsFound,
         cuotaTollsFound,
         libreTollsFound,
+        cuotaEvents,
+        libreEvents,
+        cuotaItems,
+        libreItems,
         updatedPrices,
         totalCuotaCost,
         totalLibreCost,
       };
     } catch (err) {
       console.warn('⚠️ Falló la sincronización en vivo con INEGI Sakbe:', err);
-      return { liveTollsFound: 0, cuotaTollsFound: 0, libreTollsFound: 0, updatedPrices };
+      return {
+        liveTollsFound: 0,
+        cuotaTollsFound: 0,
+        libreTollsFound: 0,
+        cuotaEvents: [],
+        libreEvents: [],
+        updatedPrices,
+      };
     }
   }
 }

@@ -8,6 +8,9 @@ import { TimeCostService } from '../src/modules/routing/services/time-cost.servi
 import { TollBypassResolverService } from '../src/modules/tolls/toll-bypass-resolver.service';
 import { CriticalTollSelectorService } from '../src/modules/routing/services/critical-toll-selector.service';
 import { FreeCorridorAnchorService } from '../src/modules/routing/services/free-corridor-anchor.service';
+import { InegiLiveSyncService, InegiLiveSyncResult } from '../src/modules/tolls/inegi-live-sync.service';
+import { TollEvent } from '@routewise/types';
+import { FIXTURE_CURATED_BYPASSES } from '../src/fixtures/bypasses.fixture';
 
 /**
  * Mock Routing Provider determinista con valores calibrados de tiempo y distancia
@@ -121,11 +124,35 @@ class SyntheticWinnerMockProvider implements RoutingProvider {
   }
 }
 
-import { FIXTURE_CURATED_BYPASSES } from '../src/fixtures/bypasses.fixture';
-
 describe('Synthetic Hybrid Winner Deterministic Test (Phase 3 MVP)', () => {
   it('Evaluates MONEY -> FREE, TIME -> FAST, and BALANCED -> HYBRID without time double-counting', async () => {
     const mockProvider = new SyntheticWinnerMockProvider();
+
+    const targetToll: TollEvent = {
+      id: 'toll-palmillas',
+      tollPlazaId: 'plaza-palmillas',
+      name: 'Caseta Palmillas',
+      operator: 'CAPUFE',
+      latitude: 20.3069,
+      longitude: -99.9349,
+      price: 108,
+      priceStatus: 'VALID',
+      routePosition: 0.3,
+    };
+
+    const mockLiveSync = {
+      syncLiveTariffs: async (): Promise<InegiLiveSyncResult> => ({
+        liveTollsFound: 1,
+        cuotaTollsFound: 1,
+        libreTollsFound: 0,
+        cuotaEvents: [targetToll],
+        libreEvents: [], // SAKBÉ confirma directamente ruta libre sin peajes (CONFIRMED_NO_TOLL)
+        updatedPrices: new Map([['Caseta Palmillas', 108]]),
+        totalCuotaCost: 108,
+        totalLibreCost: 0,
+      }),
+    } as unknown as InegiLiveSyncService;
+
     const service = new RouteOptimizationService(
       undefined,
       undefined,
@@ -135,7 +162,10 @@ describe('Synthetic Hybrid Winner Deterministic Test (Phase 3 MVP)', () => {
       new TollBypassResolverService(FIXTURE_CURATED_BYPASSES),
       undefined,
       undefined,
-      mockProvider
+      mockProvider,
+      undefined,
+      undefined,
+      mockLiveSync
     );
 
     const baseRequest = {

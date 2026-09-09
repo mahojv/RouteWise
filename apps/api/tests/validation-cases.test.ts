@@ -1,9 +1,11 @@
 process.env.ROUTING_PROVIDER = 'mock';
 process.env.GEOCODING_PROVIDER = 'mock';
 
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { buildServer } from '../src/server';
 import { FastifyInstance } from 'fastify';
+import { InegiLiveSyncService } from '../src/modules/tolls/inegi-live-sync.service';
+import { TollEvent } from '@routewise/types';
 
 describe('RouteWise End-to-End Validation: Caso A & Caso B', () => {
   let app: FastifyInstance;
@@ -14,10 +16,50 @@ describe('RouteWise End-to-End Validation: Caso A & Caso B', () => {
   });
 
   afterAll(async () => {
+    vi.restoreAllMocks();
     await app.close();
   });
 
   it('Caso A: Querétaro ➔ Ciudad de México (MEX-057D con Palmillas y Tepotzotlán)', async () => {
+    const palmillasToll: TollEvent = {
+      id: 'toll-palmillas',
+      tollPlazaId: 'plaza-palmillas',
+      name: 'Caseta Palmillas',
+      highway: 'MEX-057D',
+      operator: 'CAPUFE',
+      latitude: 20.3069,
+      longitude: -99.9349,
+      price: 108.0,
+      priceStatus: 'VALID',
+      routePosition: 0.35,
+    };
+
+    const tepotzotlanToll: TollEvent = {
+      id: 'toll-tepotzotlan',
+      tollPlazaId: 'plaza-tepotzotlan',
+      name: 'Caseta Tepotzotlán',
+      highway: 'MEX-057D',
+      operator: 'CAPUFE',
+      latitude: 19.7144,
+      longitude: -99.2075,
+      price: 108.0,
+      priceStatus: 'VALID',
+      routePosition: 0.85,
+    };
+
+    vi.spyOn(InegiLiveSyncService.prototype, 'syncLiveTariffs').mockResolvedValueOnce({
+      liveTollsFound: 2,
+      cuotaTollsFound: 2,
+      libreTollsFound: 0,
+      cuotaEvents: [palmillasToll, tepotzotlanToll],
+      libreEvents: [], // SAKBÉ confirma directamente ruta libre sin peajes (CONFIRMED_NO_TOLL)
+      updatedPrices: new Map([
+        ['Caseta Palmillas', 108.0],
+        ['Caseta Tepotzotlán', 108.0],
+      ]),
+      totalCuotaCost: 216.0,
+      totalLibreCost: 0,
+    });
     const payload = {
       origin: {
         latitude: 20.5888,
@@ -106,6 +148,30 @@ describe('RouteWise End-to-End Validation: Caso A & Caso B', () => {
   });
 
   it('Caso B: Querétaro ➔ San Luis Potosí (MEX-057D con Caseta Puerto México)', async () => {
+    const puertoMexicoToll: TollEvent = {
+      id: 'toll-puerto-mexico',
+      tollPlazaId: 'plaza-puerto-mexico',
+      name: 'Caseta Puerto México',
+      highway: 'MEX-057D',
+      operator: 'CAPUFE',
+      latitude: 21.0500,
+      longitude: -100.5000,
+      price: 145.0,
+      priceStatus: 'VALID',
+      routePosition: 0.5,
+    };
+
+    vi.spyOn(InegiLiveSyncService.prototype, 'syncLiveTariffs').mockResolvedValueOnce({
+      liveTollsFound: 1,
+      cuotaTollsFound: 1,
+      libreTollsFound: 0,
+      cuotaEvents: [puertoMexicoToll],
+      libreEvents: [], // SAKBÉ confirma directamente ruta libre sin peajes (CONFIRMED_NO_TOLL)
+      updatedPrices: new Map([['Caseta Puerto México', 145.0]]),
+      totalCuotaCost: 145.0,
+      totalLibreCost: 0,
+    });
+
     const payload = {
       origin: {
         latitude: 20.5888,

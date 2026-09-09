@@ -23,6 +23,7 @@ import {
 import { TollsService } from '../tolls/tolls.service';
 import { TollMatcherService } from '../tolls/toll-matcher.service';
 import { TollCostService } from '../tolls/toll-cost.service';
+import { InegiLiveSyncService, InegiLiveSyncResult } from '../tolls/inegi-live-sync.service';
 import { FuelCostService } from './services/fuel-cost.service';
 import { TimeCostService } from './services/time-cost.service';
 import {
@@ -36,6 +37,27 @@ import {
 import { FreeCorridorAnchorService } from './services/free-corridor-anchor.service';
 import { getDb } from '../../database';
 import { routeSearches } from '../../database/schema';
+
+/**
+ * Nivel de certeza sobre la presencia o ausencia de peajes en una ruta
+ */
+export type TollEvidenceLevel =
+  | 'CONFIRMED_TOLL'
+  | 'CONFIRMED_NO_TOLL'
+  | 'UNVERIFIED_TOLL'
+  | 'UNKNOWN';
+
+/**
+ * Evaluación intermedia que separa la detección de peajes de la clasificación de ruta
+ */
+export interface TollAssessment {
+  tolls: TollEvent[];
+  evidenceLevel: TollEvidenceLevel;
+  hasUnknownTolls: boolean;
+  hasTollEvidence: boolean;
+  unmatchedTollSegmentsCount: number;
+  confidence: 'HIGH' | 'MEDIUM' | 'LOW';
+}
 
 /**
  * Valida localmente si una geometría de ruta pasa cerca de todos los waypoints indicados (tolerancia <= 200m)
@@ -60,24 +82,30 @@ export function routePassesThroughWaypoints(
 }
 
 /**
- * Clasifica la tipología de una ruta según su estructura vial, casetas y origen
+ * Clasifica la tipología de una ruta según su estructura vial y evaluación de peajes
  */
 export function classifyRoute(
   rawRoute: RawRouteOption,
-  detectedTolls: TollEvent[],
+  assessment: TollAssessment | TollEvent[],
   isBypassRoute = false
 ): RouteType {
-  // 1. Si es una ruta generada por bypass (combina tramos libres de desvío con tramos de la ruta principal)
   if (isBypassRoute) {
     return 'HYBRID';
   }
 
-  // 2. Si no tiene casetas detectadas
-  if (detectedTolls.length === 0) {
+  // Compatibilidad hacia atrás si se recibe directamente TollEvent[]
+  if (Array.isArray(assessment)) {
+    if (assessment.length === 0) {
+      return 'NO_TOLL';
+    }
+    return 'FAST';
+  }
+
+  // Solo se clasifica como NO_TOLL cuando existe evidencia explícita y suficiente
+  if (assessment.evidenceLevel === 'CONFIRMED_NO_TOLL') {
     return 'NO_TOLL';
   }
 
-  // 3. Si tiene casetas y transitó por autopistas sin bypasses
   return 'FAST';
 }
 
@@ -93,6 +121,7 @@ export class RouteOptimizationService {
   private branchGenerator: CandidateBranchGenerator;
   private candidateEvaluator: CandidateEvaluator;
   private routingProviderOverride?: RoutingProvider;
+  private inegiLiveSyncService?: InegiLiveSyncService;
 
   constructor(
     tollsService?: TollsService,
@@ -105,7 +134,8 @@ export class RouteOptimizationService {
     freeCorridorAnchor?: FreeCorridorAnchorService,
     routingProviderOverride?: RoutingProvider,
     branchGenerator?: CandidateBranchGenerator,
-    candidateEvaluator?: CandidateEvaluator
+    candidateEvaluator?: CandidateEvaluator,
+    inegiLiveSyncService?: InegiLiveSyncService
   ) {
     this.tollsService = tollsService || new TollsService();
     this.tollCostService = tollCostService || new TollCostService();
@@ -118,6 +148,108 @@ export class RouteOptimizationService {
     this.branchGenerator = branchGenerator || new CandidateBranchGenerator();
     this.candidateEvaluator = candidateEvaluator || new CandidateEvaluator();
     this.routingProviderOverride = routingProviderOverride;
+    this.inegiLiveSyncService = inegiLiveSyncService || new InegiLiveSyncService();
+  }
+
+  /**
+   * Evalúa rigurosamente los peajes y el nivel de evidencia de una geometría de ruta
+   */
+  public assessTolls(
+    rawRoute: RawRouteOption,
+    matchedTolls: TollEvent[],
+    options: {
+      isSakbeConfirmedFree?: boolean;
+      isSakbeConfirmedToll?: boolean;
+      isBypass?: boolean;
+    } = {}
+  ): TollAssessment {
+    const activeTolls = matchedTolls.filter((e) => !e.isAvoided);
+    const hasMatchedTolls = activeTolls.length > 0;
+
+    // 1. Si SAKBÉ confirmó directamente la ruta libre (detalle_l con 0 casetas)
+    if (options.isSakbeConfirmedFree && !hasMatchedTolls) {
+      return {
+        tolls: [],
+        evidenceLevel: 'CONFIRMED_NO_TOLL',
+        hasUnknownTolls: false,
+        hasTollEvidence: false,
+        unmatchedTollSegmentsCount: 0,
+        confidence: 'HIGH',
+      };
+    }
+
+    // 2. Si hay casetas emparejadas confirmadas
+    if (hasMatchedTolls) {
+      const hasUnknownPrices = activeTolls.some((t) => t.priceStatus === 'UNKNOWN' || t.price === null);
+      return {
+        tolls: activeTolls,
+        evidenceLevel: 'CONFIRMED_TOLL',
+        hasUnknownTolls: hasUnknownPrices,
+        hasTollEvidence: true,
+        unmatchedTollSegmentsCount: 0,
+        confidence: options.isSakbeConfirmedToll ? 'HIGH' : 'MEDIUM',
+      };
+    }
+
+    // 3. Evaluar evidencia explícita de peaje en los pasos de la geometría OSRM
+    let tollStepCount = 0;
+    for (const leg of rawRoute.legs || []) {
+      for (const step of leg.steps || []) {
+        if (step.isToll) {
+          tollStepCount++;
+        } else if (step.name) {
+          const lower = step.name.toLowerCase();
+          if (
+            lower.includes('cuota') ||
+            lower.includes('autopista') ||
+            lower.includes('peaje') ||
+            lower.includes('libramiento de cuota')
+          ) {
+            tollStepCount++;
+          }
+        }
+      }
+    }
+
+    if (tollStepCount > 0) {
+      // Evidencia explícita de peaje en OSRM sin caseta identificada en catálogo -> UNVERIFIED_TOLL (UNKNOWN)
+      // Generar evento de peaje no identificado con price: null (NUNCA $0)
+      const coords = rawRoute.geometry?.coordinates || [];
+      const midCoord = coords[Math.floor(coords.length / 2)] || [-99.0, 19.5];
+      const unverifiedTollEvent: TollEvent = {
+        id: `unverified-toll-${Math.round(rawRoute.distanceMeters)}`,
+        tollPlazaId: `unverified-plaza-${Math.round(rawRoute.distanceMeters)}`,
+        name: 'Tramo de Cuota No Verificado',
+        operator: 'Desconocido',
+        latitude: midCoord[1],
+        longitude: midCoord[0],
+        price: null,
+        priceStatus: 'UNKNOWN',
+        routePosition: 0.5,
+        paymentMethod: 'CASH',
+        confidence: 'LOW',
+        matchStatus: 'UNMATCHED',
+      };
+
+      return {
+        tolls: [unverifiedTollEvent],
+        evidenceLevel: 'UNVERIFIED_TOLL',
+        hasUnknownTolls: true,
+        hasTollEvidence: true,
+        unmatchedTollSegmentsCount: tollStepCount,
+        confidence: 'LOW',
+      };
+    }
+
+    // 4. Si no hay casetas y tampoco hay pasos de cuota en OSRM
+    return {
+      tolls: [],
+      evidenceLevel: 'UNKNOWN',
+      hasUnknownTolls: false,
+      hasTollEvidence: false,
+      unmatchedTollSegmentsCount: 0,
+      confidence: 'LOW',
+    };
   }
 
   public async optimizeRoute(request: RouteCalculationRequest): Promise<RouteCalculationResponse> {
@@ -158,34 +290,60 @@ export class RouteOptimizationService {
     const fastHighwayHints = this.extractHighwayHints(fastRawRoute);
 
     // =========================================================================
-    // SINCRONIZACIÓN EN TIEMPO REAL CON INEGI SAKBE (Live Tariffs Sync en Producción/Dev)
+    // SINCRONIZACIÓN EN TIEMPO REAL CON INEGI SAKBE (Fuente Primaria de Casetas)
     // =========================================================================
-    if (process.env.NODE_ENV !== 'test' && !process.env.VITEST) {
+    let liveSyncResult: InegiLiveSyncResult | null = null;
+    if (this.inegiLiveSyncService) {
       try {
-        const inegiLiveSync = new (await import('../tolls/inegi-live-sync.service')).InegiLiveSyncService();
-        await inegiLiveSync.syncLiveTariffs(request.origin, request.destination, vehicleType);
+        liveSyncResult = await this.inegiLiveSyncService.syncLiveTariffs(
+          request.origin,
+          request.destination,
+          vehicleType
+        );
       } catch {
-        // Si la llamada externa a INEGI falla o no hay conexión, continuar con la DB local
+        liveSyncResult = null;
       }
     }
 
-    const fastTolls = await this.tollMatcher.matchTollsAlongRoute(
-      fastRawRoute.geometry.coordinates,
-      {
-        radiusMeters: DEFAULT_CONFIG.tollMatchingRadiusMeters,
-        vehicleType,
-        highwayHints: fastHighwayHints,
-        avoidTollIds,
-      }
-    );
+    // Catálogo dinámico de sesión consolidado de SAKBÉ para toda la consulta
+    const sessionTollCatalog: TollEvent[] = [];
+    if (liveSyncResult?.cuotaEvents) {
+      sessionTollCatalog.push(...liveSyncResult.cuotaEvents);
+    }
+    if (liveSyncResult?.libreEvents) {
+      sessionTollCatalog.push(...liveSyncResult.libreEvents);
+    }
 
-    const activeFastTolls = fastTolls.filter((e) => !e.isAvoided && !avoidTollIds.includes(e.tollPlazaId));
-    const fastCategory = classifyRoute(fastRawRoute, activeFastTolls, false);
+    let fastTolls: TollEvent[] = [];
+    let isSakbeFast = false;
+    if (liveSyncResult && liveSyncResult.cuotaEvents && liveSyncResult.cuotaEvents.length > 0) {
+      // Fuente primaria: Casetas vivas descubiertas por SAKBÉ detalle_c
+      fastTolls = liveSyncResult.cuotaEvents.map((evt) => ({
+        ...evt,
+        isAvoided: avoidTollIds.includes(evt.tollPlazaId) || avoidTollIds.includes(evt.id),
+      }));
+      isSakbeFast = true;
+    } else {
+      // Fallback a TollMatcher (PostgreSQL + sesión) si SAKBÉ no devolvió casetas o falló
+      fastTolls = await this.tollMatcher.matchTollsAlongRoute(
+        fastRawRoute.geometry.coordinates,
+        {
+          radiusMeters: DEFAULT_CONFIG.tollMatchingRadiusMeters,
+          vehicleType,
+          highwayHints: fastHighwayHints,
+          avoidTollIds,
+          sessionTolls: sessionTollCatalog,
+        }
+      );
+    }
+
+    const fastAssessment = this.assessTolls(fastRawRoute, fastTolls, { isSakbeConfirmedToll: isSakbeFast });
+    const fastCategory = classifyRoute(fastRawRoute, fastAssessment, false);
 
     const fastOption = this.enrichRouteOption({
       id: 'route-fast',
       rawRoute: fastRawRoute,
-      tolls: activeFastTolls,
+      tolls: fastAssessment.tolls,
       type: fastCategory,
       fuelConsumption,
       fuelPrice,
@@ -200,7 +358,7 @@ export class RouteOptimizationService {
     // =========================================================================
     let freeBaseRawRoute: RawRouteOption | null = null;
 
-    // 1. Revisar si alguna alternativa devuelta es 100% libre según TollMatcher
+    // 1. Revisar si alguna alternativa devuelta es libre según TollMatcher con catálogo de sesión
     for (let i = 1; i < fastRoutingRes.routes.length; i++) {
       const altRoute = fastRoutingRes.routes[i];
       const altHints = this.extractHighwayHints(altRoute);
@@ -209,6 +367,7 @@ export class RouteOptimizationService {
         vehicleType,
         highwayHints: altHints,
         avoidTollIds,
+        sessionTolls: sessionTollCatalog,
       });
 
       if (altTolls.length === 0) {
@@ -239,6 +398,7 @@ export class RouteOptimizationService {
                 vehicleType,
                 highwayHints: freeHints,
                 avoidTollIds,
+                sessionTolls: sessionTollCatalog,
               }
             );
 
@@ -253,11 +413,39 @@ export class RouteOptimizationService {
     }
 
     if (freeBaseRawRoute) {
+      let freeTolls: TollEvent[] = [];
+      let isSakbeFree = false;
+      if (liveSyncResult && liveSyncResult.libreEvents) {
+        // Fuente primaria para ruta libre si SAKBÉ detalle_l reportó datos
+        freeTolls = liveSyncResult.libreEvents.map((evt) => ({
+          ...evt,
+          isAvoided: avoidTollIds.includes(evt.tollPlazaId) || avoidTollIds.includes(evt.id),
+        }));
+        isSakbeFree = true;
+      } else {
+        freeTolls = await this.tollMatcher.matchTollsAlongRoute(
+          freeBaseRawRoute.geometry.coordinates,
+          {
+            radiusMeters: DEFAULT_CONFIG.tollMatchingRadiusMeters,
+            vehicleType,
+            highwayHints: this.extractHighwayHints(freeBaseRawRoute),
+            avoidTollIds,
+            sessionTolls: sessionTollCatalog,
+          }
+        );
+      }
+
+      const freeAssessment = this.assessTolls(freeBaseRawRoute, freeTolls, {
+        isSakbeConfirmedFree: isSakbeFree && freeTolls.length === 0,
+        isSakbeConfirmedToll: isSakbeFree && freeTolls.length > 0,
+      });
+      const freeCategory = classifyRoute(freeBaseRawRoute, freeAssessment, false);
+
       const freeOption = this.enrichRouteOption({
         id: 'route-free',
         rawRoute: freeBaseRawRoute,
-        tolls: [],
-        type: 'NO_TOLL',
+        tolls: freeAssessment.tolls,
+        type: freeCategory,
         fuelConsumption,
         fuelPrice,
         timeValue,
@@ -301,19 +489,17 @@ export class RouteOptimizationService {
                 vehicleType,
                 highwayHints: discHints,
                 avoidTollIds,
+                sessionTolls: sessionTollCatalog,
               }
             );
 
-            const activeDiscTolls = discTolls.filter(
-              (e) => !e.isAvoided && !avoidTollIds.includes(e.tollPlazaId)
-            );
-            const isNoToll = activeDiscTolls.length === 0;
-            const routeType: RouteType = isNoToll ? 'NO_TOLL' : 'HYBRID';
+            const discAssessment = this.assessTolls(cand.rawRoute, discTolls);
+            const routeType: RouteType = classifyRoute(cand.rawRoute, discAssessment, false);
 
             const discOption = this.enrichRouteOption({
               id: `route-discovery-${discoveryIdx++}`,
               rawRoute: cand.rawRoute,
-              tolls: activeDiscTolls,
+              tolls: discAssessment.tolls,
               type: routeType,
               fuelConsumption,
               fuelPrice,
@@ -339,7 +525,7 @@ export class RouteOptimizationService {
     // RESOLUCIÓN LOCAL DE BYPASSES (100% Local, 0 Llamadas OSRM)
     // =========================================================================
     const resolvedBypasses: ResolvedTollBypass[] = [];
-    for (const toll of activeFastTolls) {
+    for (const toll of fastAssessment.tolls) {
       const candidate = await this.tollBypassResolver.resolveBypass(
         toll,
         fastRawRoute,
@@ -382,7 +568,18 @@ export class RouteOptimizationService {
           );
           if (!passedWaypoints) continue;
 
-          // Validación 2: Evasión de la caseta objetivo mediante TollMatcher
+          // Validación 2: Verificación geométrica estricta de evasión física de la caseta objetivo
+          const distToTarget = getCumulativeDistanceToPoint(
+            { latitude: toll.latitude, longitude: toll.longitude },
+            hybridRaw.geometry.coordinates
+          ).minDistanceToPolyline;
+
+          if (distToTarget <= 250) {
+            // La ruta aún pasa físicamente a <= 250m de la caseta objetivo -> NO evadida
+            continue;
+          }
+
+          // Validación 3: Evasión mediante TollMatcher con catálogo de sesión
           const hybridHints = this.extractHighwayHints(hybridRaw);
           const hybridTolls = await this.tollMatcher.matchTollsAlongRoute(
             hybridRaw.geometry.coordinates,
@@ -391,20 +588,22 @@ export class RouteOptimizationService {
               vehicleType,
               highwayHints: hybridHints,
               avoidTollIds,
+              sessionTolls: sessionTollCatalog,
             }
           );
 
           const targetStillPresent = hybridTolls.some(
-            (t) => t.tollPlazaId === toll.tollPlazaId
+            (t) => t.tollPlazaId === toll.tollPlazaId || (t.name && toll.name && t.name.toLowerCase() === toll.name.toLowerCase())
           );
 
           if (!targetStillPresent) {
             validBypasses.push({ toll, bypass: candidate });
-            const cat = classifyRoute(hybridRaw, hybridTolls, true);
+            const hybridAssessment = this.assessTolls(hybridRaw, hybridTolls, { isBypass: true });
+            const cat = classifyRoute(hybridRaw, hybridAssessment, true);
             const hybridOption = this.enrichRouteOption({
               id: `route-hybrid-${hybridIndex++}`,
               rawRoute: hybridRaw,
-              tolls: hybridTolls,
+              tolls: hybridAssessment.tolls,
               type: cat,
               fuelConsumption,
               fuelPrice,
@@ -456,36 +655,52 @@ export class RouteOptimizationService {
             );
 
             if (passedAll) {
-              const combinedHints = this.extractHighwayHints(combinedRaw);
-              const combinedTolls = await this.tollMatcher.matchTollsAlongRoute(
-                combinedRaw.geometry.coordinates,
-                {
-                  radiusMeters: DEFAULT_CONFIG.tollMatchingRadiusMeters,
-                  vehicleType,
-                  highwayHints: combinedHints,
-                  avoidTollIds,
+              // Verificación de distancia geométrica a ambas casetas
+              const distToB1 = getCumulativeDistanceToPoint(
+                { latitude: b1.toll.latitude, longitude: b1.toll.longitude },
+                combinedRaw.geometry.coordinates
+              ).minDistanceToPolyline;
+              const distToB2 = getCumulativeDistanceToPoint(
+                { latitude: b2.toll.latitude, longitude: b2.toll.longitude },
+                combinedRaw.geometry.coordinates
+              ).minDistanceToPolyline;
+
+              if (distToB1 > 250 && distToB2 > 250) {
+                const combinedHints = this.extractHighwayHints(combinedRaw);
+                const combinedTolls = await this.tollMatcher.matchTollsAlongRoute(
+                  combinedRaw.geometry.coordinates,
+                  {
+                    radiusMeters: DEFAULT_CONFIG.tollMatchingRadiusMeters,
+                    vehicleType,
+                    highwayHints: combinedHints,
+                    avoidTollIds,
+                    sessionTolls: sessionTollCatalog,
+                  }
+                );
+
+                const avoidsBoth = !combinedTolls.some(
+                  (t) =>
+                    t.tollPlazaId === b1.toll.tollPlazaId ||
+                    t.tollPlazaId === b2.toll.tollPlazaId ||
+                    (t.name && b1.toll.name && t.name.toLowerCase() === b1.toll.name.toLowerCase()) ||
+                    (t.name && b2.toll.name && t.name.toLowerCase() === b2.toll.name.toLowerCase())
+                );
+
+                if (avoidsBoth) {
+                  const combinedAssessment = this.assessTolls(combinedRaw, combinedTolls, { isBypass: true });
+                  const cat = classifyRoute(combinedRaw, combinedAssessment, true);
+                  const combinedOption = this.enrichRouteOption({
+                    id: 'route-hybrid-combined',
+                    rawRoute: combinedRaw,
+                    tolls: combinedAssessment.tolls,
+                    type: cat,
+                    fuelConsumption,
+                    fuelPrice,
+                    timeValue,
+                    preferenceMode,
+                  });
+                  rawCandidates.push(combinedOption);
                 }
-              );
-
-              const avoidsBoth = !combinedTolls.some(
-                (t) =>
-                  t.tollPlazaId === b1.toll.tollPlazaId ||
-                  t.tollPlazaId === b2.toll.tollPlazaId
-              );
-
-              if (avoidsBoth) {
-                const cat = classifyRoute(combinedRaw, combinedTolls, true);
-                const combinedOption = this.enrichRouteOption({
-                  id: 'route-hybrid-combined',
-                  rawRoute: combinedRaw,
-                  tolls: combinedTolls,
-                  type: cat,
-                  fuelConsumption,
-                  fuelPrice,
-                  timeValue,
-                  preferenceMode,
-                });
-                rawCandidates.push(combinedOption);
               }
             }
           }

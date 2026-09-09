@@ -2,6 +2,10 @@ import { describe, it, expect } from 'vitest';
 import { RouteOptimizationService } from '../src/modules/routing/route-optimizer.service';
 import { RoutingProvider, RoutingRequest, RoutingResponse } from '@routewise/routing';
 import { TollMatcherService } from '../src/modules/tolls/toll-matcher.service';
+import { InegiLiveSyncService, InegiLiveSyncResult } from '../src/modules/tolls/inegi-live-sync.service';
+import { TollEvent } from '@routewise/types';
+import { TollBypassResolverService } from '../src/modules/tolls/toll-bypass-resolver.service';
+import { FIXTURE_CURATED_BYPASSES } from '../src/fixtures/bypasses.fixture';
 
 class UnexpectedTollMockProvider implements RoutingProvider {
   public readonly name = 'unexpected-toll-mock';
@@ -79,12 +83,49 @@ class UnexpectedTollMockProvider implements RoutingProvider {
   }
 }
 
-import { TollBypassResolverService } from '../src/modules/tolls/toll-bypass-resolver.service';
-import { FIXTURE_CURATED_BYPASSES } from '../src/fixtures/bypasses.fixture';
-
 describe('Unexpected Toll Retention & Cost Recalculation Test', () => {
   it('Retains unexpected tolls found along hybrid bypass and recalculates total cost', async () => {
     const provider = new UnexpectedTollMockProvider();
+
+    const palmillasToll: TollEvent = {
+      id: 'target-toll-palmillas',
+      tollPlazaId: 'plaza-palmillas',
+      name: 'Caseta Palmillas',
+      operator: 'CAPUFE',
+      latitude: 20.3069,
+      longitude: -99.9349,
+      price: 108,
+      priceStatus: 'VALID',
+      routePosition: 0.3,
+    };
+
+    const celayaToll: TollEvent = {
+      id: 'unexpected-toll-celaya',
+      tollPlazaId: 'plaza-celaya',
+      name: 'Caseta Querétaro - Celaya',
+      operator: 'CAPUFE',
+      latitude: 20.5512,
+      longitude: -100.4851,
+      price: 95,
+      priceStatus: 'VALID',
+      routePosition: 0.45,
+    };
+
+    const mockLiveSync = {
+      syncLiveTariffs: async (): Promise<InegiLiveSyncResult> => ({
+        liveTollsFound: 2,
+        cuotaTollsFound: 2,
+        libreTollsFound: 0,
+        cuotaEvents: [palmillasToll, celayaToll],
+        libreEvents: [],
+        updatedPrices: new Map([
+          ['Caseta Palmillas', 108],
+          ['Caseta Querétaro - Celaya', 95],
+        ]),
+        totalCuotaCost: 203,
+      }),
+    } as unknown as InegiLiveSyncService;
+
     const service = new RouteOptimizationService(
       undefined,
       undefined,
@@ -94,7 +135,10 @@ describe('Unexpected Toll Retention & Cost Recalculation Test', () => {
       new TollBypassResolverService(FIXTURE_CURATED_BYPASSES),
       undefined,
       undefined,
-      provider
+      provider,
+      undefined,
+      undefined,
+      mockLiveSync
     );
 
     const res = await service.optimizeRoute({
