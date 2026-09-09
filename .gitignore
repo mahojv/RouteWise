@@ -56,3 +56,6 @@ docker/osrm/test-data/
 
 # Drizzle cache
 .drizzle/
+
+# Local investigation scripts
+scratch/
