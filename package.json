@@ -18,6 +18,7 @@
     "db:generate": "npm run db:generate -w @routewise/api",
     "db:migrate": "npm run db:migrate -w @routewise/api",
     "db:seed": "npm run db:seed -w @routewise/api",
+    "tolls:import:inegi": "npm run tolls:import:inegi -w @routewise/api",
     "docker:dev": "docker compose -f docker-compose.dev.yml up -d",
     "docker:dev:down": "docker compose -f docker-compose.dev.yml down",
     "docker:prod": "docker compose -f docker-compose.yml up -d --build",

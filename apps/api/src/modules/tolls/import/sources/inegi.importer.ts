@@ -3,10 +3,48 @@ import { normalizeHighway, normalizePlazaName, isWithinMexicoBounds } from '../n
 import { getDbPool } from '../../../../database';
 import { env } from '../../../../config/env';
 
+export interface InegiCorridor {
+  origin: string;
+  destination: string;
+}
+
+/**
+ * Corredores troncales prioritarios de la Red Carretera Nacional
+ * Evita la complejidad combinatoria N x N ejecutando únicamente ~13 rutas estratégicas
+ */
+export const DEFAULT_INEGI_CORRIDORS: InegiCorridor[] = [
+  { origin: 'Mexico', destination: 'Queretaro' },
+  { origin: 'Mexico', destination: 'Puebla' },
+  { origin: 'Mexico', destination: 'Acapulco' },
+  { origin: 'Mexico', destination: 'Toluca' },
+  { origin: 'Queretaro', destination: 'Guadalajara' },
+  { origin: 'Queretaro', destination: 'San Luis Potosi' },
+  { origin: 'San Luis Potosi', destination: 'Monterrey' },
+  { origin: 'Puebla', destination: 'Veracruz' },
+  { origin: 'Veracruz', destination: 'Villahermosa' },
+  { origin: 'Villahermosa', destination: 'Merida' },
+  { origin: 'Merida', destination: 'Cancun' },
+  { origin: 'Monterrey', destination: 'Saltillo' },
+  { origin: 'Saltillo', destination: 'Torreon' },
+];
+
 export class InegiSakbeImporter implements TollDataImporter {
   readonly sourceCode = 'INEGI_SAKBE';
   readonly sourceName = 'Instituto Nacional de Estadística y Geografía (INEGI Sakbe v3.1)';
   private readonly defaultApiKey = process.env.INEGI_SAKBE_API_KEY || env.INEGI_SAKBE_API_KEY || '';
+
+  /**
+   * Ejecuta peticiones HTTP con control de tiempo límite (Timeout)
+   */
+  private async fetchWithTimeout(url: string, body: URLSearchParams, timeoutMs = 5000): Promise<Response> {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      return await fetch(url, { method: 'POST', body, signal: controller.signal });
+    } finally {
+      clearTimeout(timer);
+    }
+  }
 
   /**
    * Parsea contenido raw de INEGI Sakbe (JSON array o respuestas de detalle de ruta de INEGI)
@@ -71,63 +109,85 @@ export class InegiSakbeImporter implements TollDataImporter {
   }
 
   /**
-   * Consulta las casetas directamente desde la API oficial Sakbe de INEGI para un conjunto de destinos
+   * Sincronización eficiente basada en corredores troncales clave
+   * Realiza ~25 solicitudes HTTP en total en lugar de combinaciones masivas N x N
    */
-  async fetchFromInegiApi(destinations: string[], apiKey: string = this.defaultApiKey): Promise<RawTollRecord[]> {
+  async fetchFromInegiCorridors(
+    corridors: InegiCorridor[] = DEFAULT_INEGI_CORRIDORS,
+    apiKey: string = this.defaultApiKey,
+    timeoutMs = 5000
+  ): Promise<RawTollRecord[]> {
     const records: RawTollRecord[] = [];
     const key = apiKey || this.defaultApiKey;
-
-    // Buscar IDs de destinos en INEGI
-    const destIds: { id: string; name: string }[] = [];
-    for (const dest of destinations) {
-      try {
-        const body = new URLSearchParams({ buscar: dest, type: 'json', key, num: '5' });
-        const res = await fetch('https://gaia.inegi.org.mx/sakbe_v3.1/buscadestino', { method: 'POST', body });
-        const json: any = await res.json();
-        if (json && json.data && Array.isArray(json.data) && json.data.length > 0) {
-          destIds.push({ id: json.data[0].id_dest, name: json.data[0].nombre });
-        }
-      } catch (e) {
-        console.warn(`⚠️ Error buscando destino INEGI para '${dest}':`, e);
-      }
+    if (!key) {
+      console.warn('⚠️ INEGI_SAKBE_API_KEY no configurada. Omite sincronización online.');
+      return records;
     }
 
-    // Probar combinaciones de rutas principales para extraer casetas
-    for (let i = 0; i < destIds.length; i++) {
-      for (let j = i + 1; j < destIds.length; j++) {
-        try {
-          const body = new URLSearchParams({
-            dest_i: destIds[i].id,
-            dest_f: destIds[j].id,
-            v: '1',
-            type: 'json',
-            key,
-          });
+    const destCache = new Map<string, { id: string; name: string }>();
 
-          const detailRes = await fetch('https://gaia.inegi.org.mx/sakbe_v3.1/detalle_c', { method: 'POST', body });
-          const detailJson: any = await detailRes.json();
+    const getDestId = async (name: string): Promise<{ id: string; name: string } | null> => {
+      const cleanName = name.trim().toLowerCase();
+      if (destCache.has(cleanName)) {
+        return destCache.get(cleanName)!;
+      }
 
-          if (detailJson && detailJson.data && Array.isArray(detailJson.data)) {
-            for (const seg of detailJson.data) {
-              if (seg.costo_caseta && parseFloat(seg.costo_caseta) > 0) {
-                let lat = NaN;
-                let lon = NaN;
+      try {
+        const body = new URLSearchParams({ buscar: name, type: 'json', key, num: '5' });
+        const res = await this.fetchWithTimeout('https://gaia.inegi.org.mx/sakbe_v3.1/buscadestino', body, timeoutMs);
+        const json: any = await res.json();
+        if (json && json.data && Array.isArray(json.data) && json.data.length > 0) {
+          const entry = { id: String(json.data[0].id_dest), name: String(json.data[0].nombre) };
+          destCache.set(cleanName, entry);
+          return entry;
+        }
+      } catch (e: any) {
+        console.warn(`⚠️ Timeout o error buscando destino INEGI para '${name}':`, e.message || String(e));
+      }
+      return null;
+    };
 
-                if (seg.punto_caseta) {
-                  try {
-                    const geo = typeof seg.punto_caseta === 'string' ? JSON.parse(seg.punto_caseta) : seg.punto_caseta;
-                    if (geo.coordinates) {
-                      lon = parseFloat(geo.coordinates[0]);
-                      lat = parseFloat(geo.coordinates[1]);
-                    }
-                  } catch {
-                    // ignorar parse err
+    for (const corridor of corridors) {
+      const orig = await getDestId(corridor.origin);
+      const dest = await getDestId(corridor.destination);
+
+      if (!orig || !dest) continue;
+
+      try {
+        const body = new URLSearchParams({
+          dest_i: orig.id,
+          dest_f: dest.id,
+          v: '1',
+          type: 'json',
+          key,
+        });
+
+        const detailRes = await this.fetchWithTimeout('https://gaia.inegi.org.mx/sakbe_v3.1/detalle_c', body, timeoutMs);
+        const detailJson: any = await detailRes.json();
+
+        if (detailJson && detailJson.data && Array.isArray(detailJson.data)) {
+          for (const seg of detailJson.data) {
+            const isToll = Boolean(seg.punto_caseta) || /^Cruce la caseta/i.test(seg.direccion || '') || (seg.costo_caseta !== undefined && seg.costo_caseta !== null && String(seg.costo_caseta).trim() !== '');
+            if (isToll) {
+              let lat = NaN;
+              let lon = NaN;
+
+              if (seg.punto_caseta) {
+                try {
+                  const geo = typeof seg.punto_caseta === 'string' ? JSON.parse(seg.punto_caseta) : seg.punto_caseta;
+                  if (geo.coordinates) {
+                    lon = parseFloat(geo.coordinates[0]);
+                    lat = parseFloat(geo.coordinates[1]);
                   }
+                } catch {
+                  // ignorar parse err
                 }
+              }
 
-                const price = parseFloat(seg.costo_caseta);
-                const rawName = (seg.direccion || 'Caseta').replace(/^Cruce la caseta\s+/i, '').trim();
+              const price = parseFloat(seg.costo_caseta || '0') || 0;
+              const rawName = (seg.direccion || 'Caseta').replace(/^Cruce la caseta\s+/i, '').trim();
 
+              if (!isNaN(lat) && !isNaN(lon)) {
                 records.push({
                   plazaName: rawName,
                   operator: 'INEGI / SCT',
@@ -141,13 +201,27 @@ export class InegiSakbeImporter implements TollDataImporter {
               }
             }
           }
-        } catch (err) {
-          console.warn(`⚠️ Error obteniendo detalle de ruta INEGI [${destIds[i].name} -> ${destIds[j].name}]:`, err);
         }
+      } catch (err: any) {
+        console.warn(`⚠️ Error obteniendo detalle de ruta INEGI [${corridor.origin} -> ${corridor.destination}]:`, err.message || String(err));
       }
     }
 
     return records;
+  }
+
+  /**
+   * Mantiene compatibilidad con invocaciones por lista de destinos utilizando el sincronizador optimizado
+   */
+  async fetchFromInegiApi(destinations: string[], apiKey: string = this.defaultApiKey): Promise<RawTollRecord[]> {
+    if (!destinations || destinations.length < 2) return [];
+    
+    // Crear corredores secuenciales entre las ciudades proporcionadas
+    const corridors: InegiCorridor[] = [];
+    for (let i = 0; i < destinations.length - 1; i++) {
+      corridors.push({ origin: destinations[i], destination: destinations[i + 1] });
+    }
+    return this.fetchFromInegiCorridors(corridors, apiKey);
   }
 
   /**

@@ -389,29 +389,6 @@ export async function runSeed() {
     }
 
     console.log('✅ Complete seed data with 16 core Mexican highway toll plazas inserted successfully!');
-
-    // Importar casetas nacionales adicionales desde la API oficial de INEGI Sakbe
-    try {
-      console.log('📡 Cargando casetas de la Red Nacional de Caminos INEGI Sakbe...');
-      const { InegiSakbeImporter } = await import('../modules/tolls/import/sources/inegi.importer');
-      const importer = new InegiSakbeImporter();
-
-      const cities = [
-        'Queretaro', 'Mexico', 'Guadalajara', 'Monterrey', 'Puebla',
-        'Chihuahua', 'Villahermosa', 'Veracruz', 'San Luis Potosi',
-        'Leon', 'Toluca', 'Acapulco', 'Mazatlan', 'Durango', 'Torreon',
-        'Saltillo', 'Tampico', 'Merida', 'Cancun', 'Oaxaca', 'Hermosillo', 'Tijuana'
-      ];
-
-      const records = await importer.fetchFromInegiApi(cities);
-      if (records.length > 0) {
-        const rawContent = JSON.stringify(records);
-        const importRes = await importer.import(rawContent);
-        console.log(`✅ INEGI Sakbe importado: ${importRes.plazasCreated} casetas creadas, ${importRes.plazasUpdated} actualizadas.`);
-      }
-    } catch (inegiErr) {
-      console.warn('⚠️ No se pudo completar la sincronización online de INEGI durante el seeding:', inegiErr);
-    }
   } catch (err) {
     console.error('❌ Seed error:', err);
     throw err;

@@ -12,6 +12,7 @@
     "db:migrate": "tsx src/database/migrate.ts",
     "db:seed": "tsx src/database/seed.ts",
     "tolls:import": "tsx src/modules/tolls/import/cli.ts",
+    "tolls:import:inegi": "tsx src/modules/tolls/import/inegi-cli.ts",
     "db:migrate:prod": "node dist/database/migrate.js",
     "db:seed:prod": "node dist/database/seed.js"
   },
