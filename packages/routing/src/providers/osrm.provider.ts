@@ -1,5 +1,6 @@
+import { Coordinate } from '@routewise/types';
 import { RoutingProvider, ProviderHealthCheck } from './routing-provider.interface';
-import { RoutingRequest, RoutingResponse, RawRouteOption, RawRouteLeg, RawRouteStep } from '../types';
+import { RoutingRequest, RoutingResponse, NearestResponse, RawRouteOption, RawRouteLeg, RawRouteStep } from '../types';
 
 export interface OSRMProviderConfig {
   baseUrl?: string;
@@ -67,11 +68,28 @@ export class OSRMProvider implements RoutingProvider {
 
             return {
               name: step.name || '',
+              ref: step.ref,
               distanceMeters: Math.round(step.distance || 0),
               durationSeconds: Math.round(step.duration || 0),
               mode: step.mode || 'driving',
               isToll,
               geometry: step.geometry?.coordinates || [],
+              intersections: (step.intersections || []).map((i: any) => ({
+                location: i.location,
+                bearings: i.bearings || [],
+                entry: i.entry || [],
+                in: i.in,
+                out: i.out,
+                toll: i.toll,
+                classes: i.classes,
+              })),
+              maneuver: step.maneuver ? {
+                type: step.maneuver.type,
+                modifier: step.maneuver.modifier,
+                location: step.maneuver.location,
+                bearingBefore: step.maneuver.bearing_before,
+                bearingAfter: step.maneuver.bearing_after,
+              } : undefined,
             };
           });
 
@@ -98,6 +116,48 @@ export class OSRMProvider implements RoutingProvider {
     } catch (err: any) {
       if (err.name === 'AbortError') {
         throw new Error(`OSRM request timed out after ${this.timeoutMs}ms`);
+      }
+      throw err;
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  }
+
+  public async findNearest(point: Coordinate): Promise<NearestResponse> {
+    const startTime = Date.now();
+    const url = `${this.baseUrl}/nearest/v1/driving/${point.longitude},${point.latitude}?number=1`;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), this.timeoutMs);
+
+    try {
+      const response = await fetch(url, {
+        signal: controller.signal,
+        headers: { 'Accept': 'application/json' },
+      });
+
+      if (!response.ok) {
+        throw new Error(`OSRM nearest HTTP error: ${response.status} ${response.statusText}`);
+      }
+
+      const data = (await response.json()) as any;
+      if (data.code !== 'Ok' || !data.waypoints) {
+        throw new Error(`OSRM nearest failed: ${data.code || 'No snapped waypoints returned'}`);
+      }
+
+      const snappedPoints = data.waypoints.map((wp: any) => ({
+        location: wp.location as [number, number],
+        distanceMeters: Math.round(wp.distance || 0),
+        name: wp.name || undefined,
+      }));
+
+      return {
+        provider: this.name,
+        snappedPoints,
+        latencyMs: Date.now() - startTime,
+      };
+    } catch (err: any) {
+      if (err.name === 'AbortError') {
+        throw new Error(`OSRM nearest timed out after ${this.timeoutMs}ms`);
       }
       throw err;
     } finally {

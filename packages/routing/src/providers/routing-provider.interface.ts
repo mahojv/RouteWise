@@ -1,4 +1,5 @@
-import { RoutingRequest, RoutingResponse } from '../types';
+import { Coordinate } from '@routewise/types';
+import { RoutingRequest, RoutingResponse, NearestResponse } from '../types';
 
 export interface ProviderHealthCheck {
   status: 'ok' | 'error' | 'unreachable';
@@ -9,5 +10,7 @@ export interface ProviderHealthCheck {
 export interface RoutingProvider {
   readonly name: string;
   calculateRoute(request: RoutingRequest): Promise<RoutingResponse>;
+  findNearest?(point: Coordinate): Promise<NearestResponse>;
   checkHealth(): Promise<ProviderHealthCheck>;
 }
+

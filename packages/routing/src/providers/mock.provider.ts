@@ -1,10 +1,24 @@
+import { Coordinate } from '@routewise/types';
 import { RoutingProvider, ProviderHealthCheck } from './routing-provider.interface';
-import { RoutingRequest, RoutingResponse, RawRouteOption } from '../types';
+import { RoutingRequest, RoutingResponse, NearestResponse, RawRouteOption } from '../types';
 import { queretaroCdmxFixture } from '../fixtures/queretaro-cdmx';
 import { queretaroSanluisFixture } from '../fixtures/queretaro-sanluis';
 
 export class MockRoutingProvider implements RoutingProvider {
   public readonly name = 'mock';
+
+  public async findNearest(point: Coordinate): Promise<NearestResponse> {
+    return {
+      provider: this.name,
+      snappedPoints: [
+        {
+          location: [point.longitude, point.latitude],
+          distanceMeters: 5,
+        },
+      ],
+      latencyMs: 1,
+    };
+  }
 
   public async calculateRoute(request: RoutingRequest): Promise<RoutingResponse> {
     const startTime = Date.now();

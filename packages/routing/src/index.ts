@@ -3,6 +3,8 @@ export * from './providers/routing-provider.interface';
 export * from './providers/osrm.provider';
 export * from './providers/ors.provider';
 export * from './providers/mock.provider';
+export * from './candidate-branch-generator';
+export * from './candidate-evaluator';
 export * from './fixtures/queretaro-cdmx';
 export * from './fixtures/queretaro-sanluis';
 

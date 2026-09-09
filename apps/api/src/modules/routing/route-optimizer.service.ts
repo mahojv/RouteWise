@@ -13,7 +13,13 @@ import {
 } from '@routewise/types';
 import { DEFAULT_CONFIG } from '@routewise/config';
 import { getRoutingProvider } from '../../providers';
-import { MockRoutingProvider, RoutingProvider, RawRouteOption } from '@routewise/routing';
+import {
+  MockRoutingProvider,
+  RoutingProvider,
+  RawRouteOption,
+  CandidateBranchGenerator,
+  CandidateEvaluator,
+} from '@routewise/routing';
 import { TollsService } from '../tolls/tolls.service';
 import { TollMatcherService } from '../tolls/toll-matcher.service';
 import { TollCostService } from '../tolls/toll-cost.service';
@@ -83,7 +89,8 @@ export class RouteOptimizationService {
   private timeCostService: TimeCostService;
   private tollBypassResolver: TollBypassResolverService;
   private criticalTollSelector: CriticalTollSelectorService;
-  private freeCorridorAnchor: FreeCorridorAnchorService;
+  private branchGenerator: CandidateBranchGenerator;
+  private candidateEvaluator: CandidateEvaluator;
   private routingProviderOverride?: RoutingProvider;
 
   constructor(
@@ -95,7 +102,9 @@ export class RouteOptimizationService {
     tollBypassResolver?: TollBypassResolverService,
     criticalTollSelector?: CriticalTollSelectorService,
     freeCorridorAnchor?: FreeCorridorAnchorService,
-    routingProviderOverride?: RoutingProvider
+    routingProviderOverride?: RoutingProvider,
+    branchGenerator?: CandidateBranchGenerator,
+    candidateEvaluator?: CandidateEvaluator
   ) {
     this.tollsService = tollsService || new TollsService();
     this.tollCostService = tollCostService || new TollCostService();
@@ -105,6 +114,8 @@ export class RouteOptimizationService {
     this.tollBypassResolver = tollBypassResolver || new TollBypassResolverService();
     this.criticalTollSelector = criticalTollSelector || new CriticalTollSelectorService();
     this.freeCorridorAnchor = freeCorridorAnchor || new FreeCorridorAnchorService();
+    this.branchGenerator = branchGenerator || new CandidateBranchGenerator();
+    this.candidateEvaluator = candidateEvaluator || new CandidateEvaluator();
     this.routingProviderOverride = routingProviderOverride;
   }
 
@@ -252,6 +263,75 @@ export class RouteOptimizationService {
         preferenceMode,
       });
       rawCandidates.push(freeOption);
+    }
+
+    // =========================================================================
+    // ROUTE DISCOVERY (Fase 1: CandidateBranchGenerator + Fase 2: CandidateEvaluator)
+    // =========================================================================
+    const remainingBudgetForDiscovery = 5 - osrmCallsCount;
+    if (remainingBudgetForDiscovery >= 2 && fastRawRoute) {
+      try {
+        const branchCandidates = this.branchGenerator.generateCandidates(
+          fastRawRoute,
+          request.origin,
+          request.destination
+        );
+
+        if (branchCandidates.length > 0) {
+          const maxEvaluations = Math.min(2, Math.floor(remainingBudgetForDiscovery / 2));
+          const discoveryResult = await this.candidateEvaluator.evaluateCandidatePool(
+            fastRawRoute,
+            request.origin,
+            request.destination,
+            branchCandidates,
+            routingProvider,
+            { maxEvaluations }
+          );
+
+          osrmCallsCount += discoveryResult.osrmCallsUsed;
+
+          let discoveryIdx = 1;
+          for (const cand of discoveryResult.acceptedRouteCandidates) {
+            const discHints = this.extractHighwayHints(cand.rawRoute);
+            const discTolls = await this.tollMatcher.matchTollsAlongRoute(
+              cand.rawRoute.geometry.coordinates,
+              {
+                radiusMeters: DEFAULT_CONFIG.tollMatchingRadiusMeters,
+                vehicleType,
+                highwayHints: discHints,
+                avoidTollIds,
+              }
+            );
+
+            const activeDiscTolls = discTolls.filter(
+              (e) => !e.isAvoided && !avoidTollIds.includes(e.tollPlazaId)
+            );
+            const isNoToll = activeDiscTolls.length === 0;
+            const routeType: RouteType = isNoToll ? 'NO_TOLL' : 'HYBRID';
+
+            const discOption = this.enrichRouteOption({
+              id: `route-discovery-${discoveryIdx++}`,
+              rawRoute: cand.rawRoute,
+              tolls: activeDiscTolls,
+              type: routeType,
+              fuelConsumption,
+              fuelPrice,
+              timeValue,
+              preferenceMode,
+            });
+
+            if (cand.divergence.classification === 'REGIONAL_ALTERNATIVE') {
+              discOption.title = 'Corredor Regional Alternativo';
+            } else if (cand.divergence.classification === 'LOCAL_HYBRID') {
+              discOption.title = 'Alternativa Híbrida Descubierta';
+            }
+
+            rawCandidates.push(discOption);
+          }
+        }
+      } catch {
+        // Resiliencia: fallo en discovery no interrumpe el flujo base
+      }
     }
 
     // =========================================================================
@@ -722,6 +802,18 @@ export class RouteOptimizationService {
         headline: 'Cero Casetas',
         description: `Recorrido 100% por carretera libre.${noticeSuffix}`,
         badge: '💰 Cero Casetas',
+        isRecommended: false,
+      };
+    }
+
+    if (route.id.startsWith('route-discovery')) {
+      const isRegional = route.title.includes('Regional');
+      return {
+        headline: isRegional ? 'Alternativa Regional Descubierta' : 'Alternativa Híbrida Descubierta',
+        description: isRegional
+          ? `Ruta alternativa descubierta por corredor vial independiente.${noticeSuffix}`
+          : `Ruta alternativa descubierta con desvío intermedio.${noticeSuffix}`,
+        badge: isRegional ? '🗺️ Corredor Regional' : '🔄 Alternativa Híbrida',
         isRecommended: false,
       };
     }
