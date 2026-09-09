@@ -12,7 +12,7 @@ services:
       - routewise-network
     restart: unless-stopped
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-routewise} -d ${POSTGRES_DB:-routewise}']
+      test: [ 'CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-routewise} -d ${POSTGRES_DB:-routewise}' ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -28,7 +28,7 @@ services:
       - routewise-network
     restart: unless-stopped
     healthcheck:
-      test: ['CMD-SHELL', 'bash -c "</dev/tcp/127.0.0.1/5000"']
+      test: [ 'CMD-SHELL', 'bash -c "</dev/tcp/127.0.0.1/5000"' ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -63,3 +63,13 @@ networks:
 
 volumes:
   postgres_data:
+
+web:
+  build:
+    context: .
+    dockerfile: apps/mobile/Dockerfile
+  image: routewise-web:latest
+  container_name: routewise-web
+  networks:
+    - routewise-network
+  restart: unless-stopped
