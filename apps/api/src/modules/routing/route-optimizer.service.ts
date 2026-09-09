@@ -89,6 +89,7 @@ export class RouteOptimizationService {
   private timeCostService: TimeCostService;
   private tollBypassResolver: TollBypassResolverService;
   private criticalTollSelector: CriticalTollSelectorService;
+  private freeCorridorAnchor: FreeCorridorAnchorService;
   private branchGenerator: CandidateBranchGenerator;
   private candidateEvaluator: CandidateEvaluator;
   private routingProviderOverride?: RoutingProvider;
