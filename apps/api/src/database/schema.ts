@@ -8,6 +8,7 @@ import {
   boolean,
   jsonb,
   index,
+  uniqueIndex,
 } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 
@@ -116,6 +117,10 @@ export const tollRates = pgTable('toll_rates', {
       table.effectiveUntil
     ),
     vehicleTypeIdx: index('toll_rates_vehicle_type_idx').on(table.vehicleType),
+    plazaVehicleUnique: uniqueIndex('toll_rates_plaza_vehicle_unique_idx').on(
+      table.tollPlazaId,
+      table.vehicleType
+    ),
   };
 });
 

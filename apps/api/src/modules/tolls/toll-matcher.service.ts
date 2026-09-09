@@ -130,6 +130,21 @@ export class TollMatcherService {
         WITH route AS (
           SELECT ST_GeomFromText($1, 4326) AS geom,
                  ST_GeomFromText($1, 4326)::geography AS geog
+        ),
+        latest_rates AS (
+          SELECT DISTINCT ON (toll_plaza_id, vehicle_type)
+            id,
+            toll_plaza_id,
+            vehicle_type,
+            cash_price,
+            electronic_price,
+            currency,
+            effective_from,
+            effective_until,
+            last_verified_at
+          FROM toll_rates
+          WHERE vehicle_type = $2
+          ORDER BY toll_plaza_id, vehicle_type, updated_at DESC, created_at DESC
         )
         SELECT
           tp.id,
@@ -151,15 +166,20 @@ export class TollMatcherService {
           tr.last_verified_at
         FROM toll_plazas tp
         CROSS JOIN route
-        LEFT JOIN toll_rates tr ON tr.toll_plaza_id = tp.id AND tr.vehicle_type = $2
+        LEFT JOIN latest_rates tr ON tr.toll_plaza_id = tp.id
         WHERE ST_DWithin(tp.geom::geography, route.geog, $3)
         ORDER BY route_progress ASC;
       `;
 
       const res = await pool.query(query, [lineWkt, vehicleType, fallbackMaxRadius]);
       const events: TollEvent[] = [];
+      const seenPlazaIds = new Set<string>();
 
       for (const row of res.rows) {
+        if (seenPlazaIds.has(row.id)) {
+          continue;
+        }
+
         const dist = Number(row.distance_meters);
 
         // Nivel 1 (<= 120m): Coincidencia espacial directa (la caseta está físicamente sobre la ruta)
@@ -195,6 +215,7 @@ export class TollMatcherService {
 
         const isAvoided = avoidTollIds.includes(row.id);
 
+        seenPlazaIds.add(row.id);
         events.push({
           id: `toll-evt-${row.id}`,
           tollPlazaId: row.id,
@@ -426,8 +447,13 @@ export class TollMatcherService {
     const avoidTollIds = options.avoidTollIds || [];
     const highwayHints = options.highwayHints || [];
     const events: TollEvent[] = [];
+    const seenPlazaIds = new Set<string>();
 
     for (const plaza of knownPlazas) {
+      if (seenPlazaIds.has(plaza.id)) {
+        continue;
+      }
+
       let minDist = Infinity;
       let closestIdx = -1;
 
@@ -459,6 +485,7 @@ export class TollMatcherService {
         const progress = Number((closestIdx / Math.max(1, coordinates.length - 1)).toFixed(4));
         const isAvoided = avoidTollIds.includes(plaza.id);
 
+        seenPlazaIds.add(plaza.id);
         events.push({
           id: `toll-evt-${plaza.id}`,
           tollPlazaId: plaza.id,

@@ -11,6 +11,7 @@ import {
   Platform,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors } from '../src/theme/colors';
 import { Button } from '../src/components/Button';
 import { Card } from '../src/components/Card';
@@ -42,6 +43,7 @@ import {
 
 export default function SearchScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
 
   const {
     origin,
@@ -178,7 +180,16 @@ export default function SearchScreen() {
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      <ScrollView
+        contentContainerStyle={[
+          styles.content,
+          {
+            paddingTop: Math.max(16, insets.top + 8),
+            paddingBottom: Math.max(56, insets.bottom + 40),
+          },
+        ]}
+        keyboardShouldPersistTaps="handled"
+      >
         {/* Header de la App */}
         <View style={styles.header}>
           <View style={styles.brandRow}>

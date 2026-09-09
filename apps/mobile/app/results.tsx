@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors } from '../src/theme/colors';
 import { Card } from '../src/components/Card';
 import { Button } from '../src/components/Button';
@@ -18,6 +19,7 @@ import { ArrowLeft, RefreshCw, AlertCircle } from 'lucide-react-native';
 
 export default function ResultsScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const [activeTab, setActiveTab] = useState<'routes' | 'tolls' | 'breakdown'>('routes');
 
   const {
@@ -45,7 +47,7 @@ export default function ResultsScreen() {
 
   if (!searchResult || routes.length === 0) {
     return (
-      <View style={styles.container}>
+      <View style={[styles.container, { paddingTop: Math.max(24, insets.top + 16), paddingBottom: Math.max(24, insets.bottom + 16) }]}>
         <View style={styles.emptyContent}>
           <AlertCircle size={48} color={Colors.textMuted} />
           <Text style={styles.emptyTitle}>No hay resultados de búsqueda</Text>
@@ -65,7 +67,15 @@ export default function ResultsScreen() {
 
   return (
     <View style={styles.container}>
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView
+        contentContainerStyle={[
+          styles.content,
+          {
+            paddingTop: Math.max(16, insets.top + 8),
+            paddingBottom: Math.max(64, insets.bottom + 48),
+          },
+        ]}
+      >
         {/* Navigation & Route Title */}
         <View style={styles.routeHeader}>
           <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>

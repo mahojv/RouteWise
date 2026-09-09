@@ -198,16 +198,28 @@ export class InegiLiveSyncService {
 
               if (plazaId) {
                 await pool.query(`
-                  INSERT INTO toll_rates (toll_plaza_id, vehicle_type, cash_price, electronic_price, currency, source_id, effective_from)
-                  VALUES ($1, $2, $3, $3, 'MXN', $4, NOW())
-                  ON CONFLICT DO NOTHING;
+                  INSERT INTO toll_rates (
+                    toll_plaza_id,
+                    vehicle_type,
+                    cash_price,
+                    electronic_price,
+                    currency,
+                    source_id,
+                    effective_from,
+                    last_verified_at,
+                    created_at,
+                    updated_at
+                  )
+                  VALUES ($1, $2, $3, $3, 'MXN', $4, NOW(), NOW(), NOW(), NOW())
+                  ON CONFLICT (toll_plaza_id, vehicle_type)
+                  DO UPDATE SET
+                    cash_price = EXCLUDED.cash_price,
+                    electronic_price = EXCLUDED.electronic_price,
+                    currency = EXCLUDED.currency,
+                    source_id = EXCLUDED.source_id,
+                    last_verified_at = NOW(),
+                    updated_at = NOW();
                 `, [plazaId, vehicleType, price, sourceId]);
-
-                await pool.query(`
-                  UPDATE toll_rates
-                  SET cash_price = $1, electronic_price = $1, updated_at = NOW()
-                  WHERE toll_plaza_id = $2 AND vehicle_type = $3;
-                `, [price, plazaId, vehicleType]);
               }
             } catch (dbErr) {
               console.warn(`⚠️ Error guardando caseta en vivo '${normName}':`, dbErr);

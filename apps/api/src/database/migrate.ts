@@ -84,6 +84,15 @@ export async function runMigrations() {
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
 
+      -- Deduplicación segura: conservar únicamente la fila más reciente/actualizada por (toll_plaza_id, vehicle_type)
+      DELETE FROM toll_rates
+      WHERE id NOT IN (
+        SELECT DISTINCT ON (toll_plaza_id, vehicle_type) id
+        FROM toll_rates
+        ORDER BY toll_plaza_id, vehicle_type, updated_at DESC NULLS LAST, created_at DESC NULLS LAST
+      );
+
+      CREATE UNIQUE INDEX IF NOT EXISTS toll_rates_plaza_vehicle_unique_idx ON toll_rates(toll_plaza_id, vehicle_type);
       CREATE INDEX IF NOT EXISTS toll_rates_plaza_vehicle_idx ON toll_rates(toll_plaza_id, vehicle_type);
     `);
 
