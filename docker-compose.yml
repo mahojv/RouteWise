@@ -8,8 +8,8 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-routewise}
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    ports:
-      - '5432:5432'
+    networks:
+      - routewise-network
     restart: unless-stopped
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-routewise} -d ${POSTGRES_DB:-routewise}']
@@ -24,6 +24,8 @@ services:
     command: osrm-routed --algorithm mld /data/mexico-latest.osrm
     volumes:
       - ./docker/osrm/data:/data
+    networks:
+      - routewise-network
     restart: unless-stopped
     healthcheck:
       test: ['CMD-SHELL', 'wget -q -O - "http://localhost:5000/route/v1/driving/-99.1332,19.4326;-99.1330,19.4320?overview=false" > /dev/null || exit 1']
@@ -43,7 +45,9 @@ services:
       osrm:
         condition: service_healthy
     ports:
-      - '${PORT:-3000}:3000'
+      - '127.0.0.1:3000:3000'
+    networks:
+      - routewise-network
     env_file:
       - .env
     environment:
@@ -52,6 +56,10 @@ services:
       - ROUTING_PROVIDER=osrm
       - OSRM_URL=http://osrm:5000
     restart: unless-stopped
+
+networks:
+  routewise-network:
+    driver: bridge
 
 volumes:
   postgres_data:

@@ -28,15 +28,18 @@ describe('TollMatcherService Unit Tests', () => {
   });
 
   it('Correctly marks isAvoided when tollPlazaId is in avoidTollIds', async () => {
+    const initial = await matcher.matchTollsAlongRoute(coords);
+    const palmillasId = initial.find((e) => e.name.toLowerCase().includes('palmillas'))?.tollPlazaId || 'plaza-palmillas';
+
     const events = await matcher.matchTollsAlongRoute(coords, {
-      avoidTollIds: ['plaza-palmillas'],
+      avoidTollIds: [palmillasId],
     });
 
-    const palmillas = events.find((e) => e.tollPlazaId === 'plaza-palmillas');
+    const palmillas = events.find((e) => e.name.toLowerCase().includes('palmillas'));
     expect(palmillas).toBeDefined();
     expect(palmillas?.isAvoided).toBe(true);
 
-    const tepotzotlan = events.find((e) => e.tollPlazaId === 'plaza-tepotzotlan');
+    const tepotzotlan = events.find((e) => e.name.toLowerCase().includes('tepotzotlán'));
     expect(tepotzotlan).toBeDefined();
     expect(tepotzotlan?.isAvoided).toBe(false);
   });

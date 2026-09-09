@@ -13,7 +13,7 @@
     "dev:mobile": "npm run dev -w @routewise/mobile",
     "build:packages": "npm run build -w @routewise/types && npm run build -w @routewise/config && npm run build -w @routewise/validation && npm run build -w @routewise/routing",
     "build": "npm run build:packages && npm run build -w @routewise/api",
-    "test": "npm run test -w @routewise/routing && npm run test -w @routewise/api",
+    "test": "npm run test -w @routewise/routing && npm run test -w @routewise/api && npm run test -w @routewise/mobile",
     "lint": "npm run lint --workspaces --if-present",
     "db:generate": "npm run db:generate -w @routewise/api",
     "db:migrate": "npm run db:migrate -w @routewise/api",

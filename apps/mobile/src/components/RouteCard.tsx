@@ -1,12 +1,12 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
-import { RouteOption } from '@routewise/types';
+import { PublicRouteOption } from '@routewise/types';
 import { Card } from './Card';
 import { Colors } from '../theme/colors';
-import { Clock, Navigation, DollarSign, AlertCircle, AlertTriangle } from 'lucide-react-native';
+import { Clock, Navigation, DollarSign } from 'lucide-react-native';
 
 interface RouteCardProps {
-  route: RouteOption;
+  route: PublicRouteOption;
   isSelected: boolean;
   onSelect: () => void;
 }
@@ -16,14 +16,12 @@ export const RouteCard: React.FC<RouteCardProps> = ({
   isSelected,
   onSelect,
 }) => {
-  const hours = Math.floor(route.durationSeconds / 3600);
-  const minutes = Math.round((route.durationSeconds % 3600) / 60);
-  const distanceKm = Math.round(route.distanceMeters / 1000);
-  const directCost = route.cost?.direct ?? route.totalCost;
-  const tollCost = route.cost?.tolls ?? route.tollCost;
-  const fuelCost = route.cost?.fuel ?? route.fuelCost;
-  const hasUnknown = route.cost?.hasUnknownTolls;
-  const hasOutdated = route.cost?.hasOutdatedTolls;
+  const hours = Math.floor(route.durationMinutes / 60);
+  const minutes = Math.round(route.durationMinutes % 60);
+  const distanceKm = Math.round(route.distanceKm);
+  const directCost = route.cost?.direct ?? 0;
+  const tollCost = route.cost?.tolls ?? 0;
+  const fuelCost = route.cost?.fuel ?? 0;
 
   return (
     <TouchableOpacity onPress={onSelect} activeOpacity={0.9} style={styles.container}>
@@ -53,7 +51,7 @@ export const RouteCard: React.FC<RouteCardProps> = ({
           <View style={styles.metricItem}>
             <Clock size={15} color={Colors.accentPrimary} />
             <Text style={styles.metricText}>
-              {hours > 0 ? `${hours} h ` : ''}{minutes} min
+              {hours > 0 ? `${hours}h ` : ''}{minutes} min
             </Text>
           </View>
           <View style={styles.metricDot} />
@@ -70,24 +68,6 @@ export const RouteCard: React.FC<RouteCardProps> = ({
           </View>
         </View>
 
-        {/* Status Warnings */}
-        {(hasUnknown || hasOutdated) && (
-          <View style={styles.statusRow}>
-            {hasUnknown && (
-              <View style={styles.warningBadgeUnknown}>
-                <AlertCircle size={13} color="#EF4444" />
-                <Text style={styles.warningTextUnknown}>Tarifa por verificar</Text>
-              </View>
-            )}
-            {hasOutdated && (
-              <View style={styles.warningBadgeOutdated}>
-                <AlertTriangle size={13} color="#F59E0B" />
-                <Text style={styles.warningTextOutdated}>Precio estimado</Text>
-              </View>
-            )}
-          </View>
-        )}
-
         {/* Cost Breakdown Pills */}
         <View style={styles.breakdownRow}>
           <View style={styles.breakdownPill}>
@@ -95,7 +75,7 @@ export const RouteCard: React.FC<RouteCardProps> = ({
             <Text style={styles.breakdownValue}>${fuelCost}</Text>
           </View>
           <View style={styles.breakdownPill}>
-            <Text style={styles.breakdownLabel}>Casetas ({route.tolls?.length || route.tollPlazas?.length || 0})</Text>
+            <Text style={styles.breakdownLabel}>Casetas ({route.tolls?.length || 0})</Text>
             <Text style={styles.breakdownValue}>${tollCost}</Text>
           </View>
           {route.cost?.time > 0 && (
@@ -199,44 +179,6 @@ const styles = StyleSheet.create({
   },
   tollText: {
     color: Colors.accentToll,
-  },
-  statusRow: {
-    flexDirection: 'row',
-    gap: 8,
-    marginTop: 4,
-    marginBottom: 6,
-  },
-  warningBadgeUnknown: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: 'rgba(239, 68, 68, 0.15)',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: '#EF4444',
-  },
-  warningTextUnknown: {
-    color: '#EF4444',
-    fontSize: 11,
-    fontWeight: '700',
-  },
-  warningBadgeOutdated: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: 'rgba(245, 158, 11, 0.15)',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: '#F59E0B',
-  },
-  warningTextOutdated: {
-    color: '#F59E0B',
-    fontSize: 11,
-    fontWeight: '700',
   },
   breakdownRow: {
     flexDirection: 'row',

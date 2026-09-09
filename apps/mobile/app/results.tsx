@@ -14,7 +14,7 @@ import { MapView } from '../src/components/MapView';
 import { RouteCard } from '../src/components/RouteCard';
 import { TollList } from '../src/components/TollList';
 import { useRouteStore } from '../src/store/routeStore';
-import { ArrowLeft, RefreshCw, Layers, ShieldAlert, CheckCircle2, Clock } from 'lucide-react-native';
+import { ArrowLeft, RefreshCw, AlertCircle } from 'lucide-react-native';
 
 export default function ResultsScreen() {
   const router = useRouter();
@@ -23,27 +23,45 @@ export default function ResultsScreen() {
   const {
     origin,
     destination,
-    calculationResult,
+    searchResult,
     selectedRouteId,
     setSelectedRouteId,
-    toggleAvoidToll,
-    avoidTollPlazaIds,
-    computeRoute,
-    isLoading,
+    executeSearch,
+    status,
   } = useRouteStore();
 
-  const routes = calculationResult?.routes || [];
+  const routes = searchResult?.routes || [];
   const selectedRoute = routes.find((r) => r.id === selectedRouteId) || routes[0];
 
   const handleRecalculate = async () => {
-    await computeRoute();
+    await executeSearch();
   };
 
-  const directCost = selectedRoute?.cost?.direct ?? selectedRoute?.totalCost ?? 0;
-  const tollCost = selectedRoute?.cost?.tolls ?? selectedRoute?.tollCost ?? 0;
-  const fuelCost = selectedRoute?.cost?.fuel ?? selectedRoute?.fuelCost ?? 0;
+  const directCost = selectedRoute?.cost?.direct ?? 0;
+  const tollCost = selectedRoute?.cost?.tolls ?? 0;
+  const fuelCost = selectedRoute?.cost?.fuel ?? 0;
   const timeCost = selectedRoute?.cost?.time ?? 0;
   const generalizedCost = selectedRoute?.cost?.generalized ?? directCost;
+
+  if (!searchResult || routes.length === 0) {
+    return (
+      <View style={styles.container}>
+        <View style={styles.emptyContent}>
+          <AlertCircle size={48} color={Colors.textMuted} />
+          <Text style={styles.emptyTitle}>No hay resultados de búsqueda</Text>
+          <Text style={styles.emptySubtitle}>Realiza una nueva búsqueda de rutas para ver alternativas.</Text>
+          <Button
+            title="IR A BÚSQUEDA"
+            onPress={() => router.replace('/')}
+            style={{ marginTop: 16 }}
+          />
+        </View>
+      </View>
+    );
+  }
+
+  const hours = selectedRoute ? Math.floor(selectedRoute.durationMinutes / 60) : 0;
+  const minutes = selectedRoute ? Math.round(selectedRoute.durationMinutes % 60) : 0;
 
   return (
     <View style={styles.container}>
@@ -69,6 +87,7 @@ export default function ResultsScreen() {
           destination={destination}
           selectedRoute={selectedRoute}
           routes={routes}
+          onSelectRoute={(id) => setSelectedRouteId(id)}
         />
 
         {/* Navigation Tabs */}
@@ -116,12 +135,11 @@ export default function ResultsScreen() {
 
                 <View style={styles.featureMetrics}>
                   <Text style={styles.featureTime}>
-                    {Math.floor(selectedRoute.durationSeconds / 3600)}h{' '}
-                    {Math.round((selectedRoute.durationSeconds % 3600) / 60)}m
+                    {hours > 0 ? `${hours}h ` : ''}{minutes}m
                   </Text>
                   <Text style={styles.featureDot}>·</Text>
                   <Text style={styles.featureDistance}>
-                    {Math.round(selectedRoute.distanceMeters / 1000)} km
+                    {Math.round(selectedRoute.distanceKm)} km
                   </Text>
                   <Text style={styles.featureDot}>·</Text>
                   <Text style={styles.featureTolls}>
@@ -147,18 +165,11 @@ export default function ResultsScreen() {
           </View>
         )}
 
-        {/* TAB 2: INTERACTIVE TOLLS */}
+        {/* TAB 2: TOLLS */}
         {activeTab === 'tolls' && (
           <View style={styles.tabContent}>
             <Text style={styles.sectionTitle}>CASETAS EN RUTA SELECCIONADA</Text>
-            <TollList
-              tolls={selectedRoute?.tolls || []}
-              avoidTollIds={avoidTollPlazaIds}
-              onToggleAvoid={async (tollId) => {
-                toggleAvoidToll(tollId);
-                await handleRecalculate();
-              }}
-            />
+            <TollList tolls={selectedRoute?.tolls || []} />
           </View>
         )}
 
@@ -184,7 +195,7 @@ export default function ResultsScreen() {
               </View>
 
               <View style={styles.breakdownDetailRow}>
-                <Text style={styles.breakdownDetailLabel}>Valor del tiempo ({Math.round(selectedRoute.durationSeconds / 60)} min)</Text>
+                <Text style={styles.breakdownDetailLabel}>Valor del tiempo ({Math.round(selectedRoute.durationMinutes)} min)</Text>
                 <Text style={styles.breakdownDetailValue}>${timeCost} MXN</Text>
               </View>
 
@@ -201,7 +212,7 @@ export default function ResultsScreen() {
           title="RECALCULAR ALTERNATIVAS"
           variant="secondary"
           size="md"
-          loading={isLoading}
+          loading={status === 'loading'}
           onPress={handleRecalculate}
           style={styles.recalculateBtn}
           icon={<RefreshCw size={18} color={Colors.textPrimary} />}
@@ -219,6 +230,25 @@ const styles = StyleSheet.create({
   content: {
     padding: 16,
     paddingBottom: 40,
+  },
+  emptyContent: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+
+  },
+  emptyTitle: {
+    color: Colors.textPrimary,
+    fontSize: 18,
+    fontWeight: '700',
+    marginTop: 12,
+  },
+  emptySubtitle: {
+    color: Colors.textSecondary,
+    fontSize: 14,
+    textAlign: 'center',
+    marginTop: 6,
   },
   routeHeader: {
     flexDirection: 'row',

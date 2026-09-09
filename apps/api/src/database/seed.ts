@@ -4,7 +4,7 @@ export async function runSeed() {
   const pool = getDbPool();
   const client = await pool.connect();
 
-  console.log('🌱 Seeding sample Mexican toll plazas, data sources, rates, and vehicle presets...');
+  console.log('🌱 Seeding complete Mexican toll plazas, data sources, rates, and vehicle presets...');
 
   try {
     await client.query(`
@@ -102,6 +102,7 @@ export async function runSeed() {
         name: 'Caseta Chichimequillas (Libramiento Norponiente Querétaro)',
         operator: 'CONCESIONARIO',
         highway: 'MEX-057D-LIB',
+        road: 'Libramiento Norponiente Querétaro',
         lat: 20.7381,
         lon: -100.3275,
         km_marker: 18.0,
@@ -110,12 +111,14 @@ export async function runSeed() {
           { vehicle_type: 'motocicleta', cash_price: 32.0, electronic_price: 32.0 },
           { vehicle_type: 'automovil', cash_price: 65.0, electronic_price: 65.0 },
           { vehicle_type: 'autobus', cash_price: 130.0, electronic_price: 130.0 },
+          { vehicle_type: 'camion_2_ejes', cash_price: 130.0, electronic_price: 130.0 },
         ],
       },
       {
         name: 'Caseta Querétaro - Celaya (Cuota 45D)',
         operator: 'CAPUFE',
         highway: 'MEX-045D',
+        road: 'Querétaro - Irapuato',
         lat: 20.5512,
         lon: -100.4851,
         km_marker: 12.0,
@@ -124,12 +127,14 @@ export async function runSeed() {
           { vehicle_type: 'motocicleta', cash_price: 47.0, electronic_price: 47.0 },
           { vehicle_type: 'automovil', cash_price: 95.0, electronic_price: 95.0 },
           { vehicle_type: 'autobus', cash_price: 185.0, electronic_price: 185.0 },
+          { vehicle_type: 'camion_2_ejes', cash_price: 185.0, electronic_price: 185.0 },
         ],
       },
       {
         name: 'Caseta Puerto México (Querétaro - San Luis Potosí 57D)',
         operator: 'FONADIN',
         highway: 'MEX-057D',
+        road: 'Querétaro - San Luis Potosí',
         lat: 21.3150,
         lon: -100.5630,
         km_marker: 88.0,
@@ -138,12 +143,14 @@ export async function runSeed() {
           { vehicle_type: 'motocicleta', cash_price: 72.0, electronic_price: 72.0 },
           { vehicle_type: 'automovil', cash_price: 145.0, electronic_price: 145.0 },
           { vehicle_type: 'autobus', cash_price: 290.0, electronic_price: 290.0 },
+          { vehicle_type: 'camion_2_ejes', cash_price: 290.0, electronic_price: 290.0 },
         ],
       },
       {
         name: 'Caseta San Marcos (México - Puebla 150D)',
         operator: 'CAPUFE',
         highway: 'MEX-150D',
+        road: 'México - Puebla',
         lat: 19.3245,
         lon: -98.8890,
         km_marker: 33.0,
@@ -152,6 +159,167 @@ export async function runSeed() {
           { vehicle_type: 'motocicleta', cash_price: 78.0, electronic_price: 78.0 },
           { vehicle_type: 'automovil', cash_price: 156.0, electronic_price: 156.0 },
           { vehicle_type: 'autobus', cash_price: 310.0, electronic_price: 310.0 },
+          { vehicle_type: 'camion_2_ejes', cash_price: 310.0, electronic_price: 310.0 },
+        ],
+      },
+      {
+        name: 'Caseta Querétaro - Arco Norte (Autopista Arco Norte M40D)',
+        operator: 'CONCESIONARIO',
+        highway: 'MEX-M40D',
+        road: 'Autopista Arco Norte',
+        lat: 19.996598,
+        lon: -99.490843,
+        km_marker: 18.0,
+        direction: 'both',
+        rates: [
+          { vehicle_type: 'motocicleta', cash_price: 58.0, electronic_price: 58.0 },
+          { vehicle_type: 'automovil', cash_price: 115.0, electronic_price: 115.0 },
+          { vehicle_type: 'autobus', cash_price: 230.0, electronic_price: 230.0 },
+          { vehicle_type: 'camion_2_ejes', cash_price: 230.0, electronic_price: 230.0 },
+        ],
+      },
+      {
+        name: 'Caseta Tula - Arco Norte (Autopista Arco Norte M40D)',
+        operator: 'CONCESIONARIO',
+        highway: 'MEX-M40D',
+        road: 'Autopista Arco Norte',
+        lat: 20.068881,
+        lon: -99.225835,
+        km_marker: 45.0,
+        direction: 'both',
+        rates: [
+          { vehicle_type: 'motocicleta', cash_price: 48.0, electronic_price: 48.0 },
+          { vehicle_type: 'automovil', cash_price: 95.0, electronic_price: 95.0 },
+          { vehicle_type: 'autobus', cash_price: 190.0, electronic_price: 190.0 },
+          { vehicle_type: 'camion_2_ejes', cash_price: 190.0, electronic_price: 190.0 },
+        ],
+      },
+      {
+        name: 'Caseta Pachuca - Arco Norte (Autopista Arco Norte M40D)',
+        operator: 'CONCESIONARIO',
+        highway: 'MEX-M40D',
+        road: 'Autopista Arco Norte',
+        lat: 19.930860,
+        lon: -98.896466,
+        km_marker: 88.0,
+        direction: 'both',
+        rates: [
+          { vehicle_type: 'motocicleta', cash_price: 65.0, electronic_price: 65.0 },
+          { vehicle_type: 'automovil', cash_price: 130.0, electronic_price: 130.0 },
+          { vehicle_type: 'autobus', cash_price: 260.0, electronic_price: 260.0 },
+          { vehicle_type: 'camion_2_ejes', cash_price: 260.0, electronic_price: 260.0 },
+        ],
+      },
+      {
+        name: 'Caseta San Martín Texmelucan - Arco Norte',
+        operator: 'CONCESIONARIO',
+        highway: 'MEX-M40D',
+        road: 'Autopista Arco Norte',
+        lat: 19.402391,
+        lon: -98.422697,
+        km_marker: 172.0,
+        direction: 'both',
+        rates: [
+          { vehicle_type: 'motocicleta', cash_price: 82.0, electronic_price: 82.0 },
+          { vehicle_type: 'automovil', cash_price: 165.0, electronic_price: 165.0 },
+          { vehicle_type: 'autobus', cash_price: 330.0, electronic_price: 330.0 },
+          { vehicle_type: 'camion_2_ejes', cash_price: 330.0, electronic_price: 330.0 },
+        ],
+      },
+      {
+        name: 'Caseta Amozoc (Puebla - Acacingo 150D)',
+        operator: 'CAPUFE',
+        highway: 'MEX-150D',
+        road: 'Puebla - Acacingo',
+        lat: 19.055247,
+        lon: -98.055725,
+        km_marker: 142.0,
+        direction: 'both',
+        rates: [
+          { vehicle_type: 'motocicleta', cash_price: 42.0, electronic_price: 42.0 },
+          { vehicle_type: 'automovil', cash_price: 85.0, electronic_price: 85.0 },
+          { vehicle_type: 'autobus', cash_price: 170.0, electronic_price: 170.0 },
+          { vehicle_type: 'camion_2_ejes', cash_price: 170.0, electronic_price: 170.0 },
+        ],
+      },
+      {
+        name: 'Caseta Esperanza (Puebla - Orizaba 150D)',
+        operator: 'CAPUFE',
+        highway: 'MEX-150D',
+        road: 'Puebla - Orizaba',
+        lat: 18.858224,
+        lon: -97.360131,
+        km_marker: 221.0,
+        direction: 'both',
+        rates: [
+          { vehicle_type: 'motocicleta', cash_price: 80.0, electronic_price: 80.0 },
+          { vehicle_type: 'automovil', cash_price: 160.0, electronic_price: 160.0 },
+          { vehicle_type: 'autobus', cash_price: 320.0, electronic_price: 320.0 },
+          { vehicle_type: 'camion_2_ejes', cash_price: 320.0, electronic_price: 320.0 },
+        ],
+      },
+      {
+        name: 'Caseta Cuitláhuac (Córdoba - Veracruz 150D)',
+        operator: 'CAPUFE',
+        highway: 'MEX-150D',
+        road: 'Córdoba - Veracruz',
+        lat: 18.823259,
+        lon: -96.709435,
+        km_marker: 291.0,
+        direction: 'both',
+        rates: [
+          { vehicle_type: 'motocicleta', cash_price: 64.0, electronic_price: 64.0 },
+          { vehicle_type: 'automovil', cash_price: 128.0, electronic_price: 128.0 },
+          { vehicle_type: 'autobus', cash_price: 256.0, electronic_price: 256.0 },
+          { vehicle_type: 'camion_2_ejes', cash_price: 256.0, electronic_price: 256.0 },
+        ],
+      },
+      {
+        name: 'Caseta La Tinaja - Cosamaloapan (145D)',
+        operator: 'CAPUFE',
+        highway: 'MEX-145D',
+        road: 'La Tinaja - Acayucan',
+        lat: 18.273046,
+        lon: -95.716454,
+        km_marker: 82.0,
+        direction: 'both',
+        rates: [
+          { vehicle_type: 'motocicleta', cash_price: 125.0, electronic_price: 125.0 },
+          { vehicle_type: 'automovil', cash_price: 250.0, electronic_price: 250.0 },
+          { vehicle_type: 'autobus', cash_price: 500.0, electronic_price: 500.0 },
+          { vehicle_type: 'camion_2_ejes', cash_price: 500.0, electronic_price: 500.0 },
+        ],
+      },
+      {
+        name: 'Caseta Acayucan (La Tinaja - Acayucan 145D)',
+        operator: 'CAPUFE',
+        highway: 'MEX-145D',
+        road: 'La Tinaja - Acayucan',
+        lat: 17.911190,
+        lon: -94.917807,
+        km_marker: 188.0,
+        direction: 'both',
+        rates: [
+          { vehicle_type: 'motocicleta', cash_price: 47.0, electronic_price: 47.0 },
+          { vehicle_type: 'automovil', cash_price: 95.0, electronic_price: 95.0 },
+          { vehicle_type: 'autobus', cash_price: 190.0, electronic_price: 190.0 },
+          { vehicle_type: 'camion_2_ejes', cash_price: 190.0, electronic_price: 190.0 },
+        ],
+      },
+      {
+        name: 'Caseta Sánchez Magallanes - La Venta (180D)',
+        operator: 'CAPUFE',
+        highway: 'MEX-180D',
+        road: 'Agua Dulce - Cárdenas',
+        lat: 18.062320,
+        lon: -94.040975,
+        km_marker: 42.0,
+        direction: 'both',
+        rates: [
+          { vehicle_type: 'motocicleta', cash_price: 45.0, electronic_price: 45.0 },
+          { vehicle_type: 'automovil', cash_price: 90.0, electronic_price: 90.0 },
+          { vehicle_type: 'autobus', cash_price: 180.0, electronic_price: 180.0 },
+          { vehicle_type: 'camion_2_ejes', cash_price: 180.0, electronic_price: 180.0 },
         ],
       },
     ];
@@ -220,7 +388,30 @@ export async function runSeed() {
       }
     }
 
-    console.log('✅ Seed data with toll rates and curated bypasses inserted successfully!');
+    console.log('✅ Complete seed data with 16 core Mexican highway toll plazas inserted successfully!');
+
+    // Importar casetas nacionales adicionales desde la API oficial de INEGI Sakbe
+    try {
+      console.log('📡 Cargando casetas de la Red Nacional de Caminos INEGI Sakbe...');
+      const { InegiSakbeImporter } = await import('../modules/tolls/import/sources/inegi.importer');
+      const importer = new InegiSakbeImporter();
+
+      const cities = [
+        'Queretaro', 'Mexico', 'Guadalajara', 'Monterrey', 'Puebla',
+        'Chihuahua', 'Villahermosa', 'Veracruz', 'San Luis Potosi',
+        'Leon', 'Toluca', 'Acapulco', 'Mazatlan', 'Durango', 'Torreon',
+        'Saltillo', 'Tampico', 'Merida', 'Cancun', 'Oaxaca', 'Hermosillo', 'Tijuana'
+      ];
+
+      const records = await importer.fetchFromInegiApi(cities);
+      if (records.length > 0) {
+        const rawContent = JSON.stringify(records);
+        const importRes = await importer.import(rawContent);
+        console.log(`✅ INEGI Sakbe importado: ${importRes.plazasCreated} casetas creadas, ${importRes.plazasUpdated} actualizadas.`);
+      }
+    } catch (inegiErr) {
+      console.warn('⚠️ No se pudo completar la sincronización online de INEGI durante el seeding:', inegiErr);
+    }
   } catch (err) {
     console.error('❌ Seed error:', err);
     throw err;

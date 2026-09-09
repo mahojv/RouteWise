@@ -162,19 +162,21 @@ export class TollMatcherService {
       for (const row of res.rows) {
         const dist = Number(row.distance_meters);
 
-        // Nivel 1 (<= 120m): Validacion estandar de carretera
-        // Nivel 2 (120m < dist <= 250m): Validacion estricta (requiere hints y compatibilidad confirmada)
-        if (highwayHints.length > 0) {
-          const compatible = isHighwayCompatible(
-            { highway: row.highway, road: row.road, name: row.name },
-            highwayHints
-          );
-          if (!compatible) {
+        // Nivel 1 (<= 120m): Coincidencia espacial directa (la caseta está físicamente sobre la ruta)
+        // Nivel 2 (120m < dist <= 250m): Verificación de compatibilidad con highwayHints
+        if (dist > primaryRadius) {
+          if (highwayHints.length > 0) {
+            const compatible = isHighwayCompatible(
+              { highway: row.highway, road: row.road, name: row.name },
+              highwayHints
+            );
+            if (!compatible) {
+              continue;
+            }
+          } else {
+            // Fuera de radio primario y sin hints para verificar
             continue;
           }
-        } else if (dist > primaryRadius) {
-          // Si esta en rango fallback pero no hay hints de carretera para verificar, ignorar para evitar falsos positivos
-          continue;
         }
 
         if (options.direction && row.direction && row.direction !== 'both') {

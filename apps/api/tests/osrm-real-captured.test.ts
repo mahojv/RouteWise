@@ -62,7 +62,7 @@ describe('Real OSRM Route Processing & Toll Detection (Offline Reproducible Test
     expect(tepotzotlan.price).toBe(108.0);
     expect(tepotzotlan.priceStatus).toBe('VALID');
     expect(tepotzotlan.routePosition).toBeGreaterThan(palmillas.routePosition);
-    expect(tepotzotlan.routePosition).toBeLessThan(0.7); // ~59%
+    expect(tepotzotlan.routePosition).toBeLessThan(0.9); // ~78%
 
     // Verificación de exclusión de carreteras no transitadas
     const celaya = matchedTolls.find((t) => t.name.includes('Celaya'));

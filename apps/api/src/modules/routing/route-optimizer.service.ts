@@ -145,6 +145,18 @@ export class RouteOptimizationService {
     const fastRawRoute = fastRoutingRes.routes[0];
     const fastHighwayHints = this.extractHighwayHints(fastRawRoute);
 
+    // =========================================================================
+    // SINCRONIZACIÓN EN TIEMPO REAL CON INEGI SAKBE (Live Tariffs Sync en Producción/Dev)
+    // =========================================================================
+    if (process.env.NODE_ENV !== 'test' && !process.env.VITEST) {
+      try {
+        const inegiLiveSync = new (await import('../tolls/inegi-live-sync.service')).InegiLiveSyncService();
+        await inegiLiveSync.syncLiveTariffs(request.origin, request.destination, vehicleType);
+      } catch {
+        // Si la llamada externa a INEGI falla o no hay conexión, continuar con la DB local
+      }
+    }
+
     const fastTolls = await this.tollMatcher.matchTollsAlongRoute(
       fastRawRoute.geometry.coordinates,
       {
